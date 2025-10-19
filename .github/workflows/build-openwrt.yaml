@@ -16,6 +16,7 @@ env:
   REMOTE_REPOSITORY: pesa1234/openwrt
   CONFIG_FILE: mt6000.config
   GH_TOKEN: ${{ github.token }}
+  DTS_FILE: mt7986a-glinet-gl-mt6000.dts
 
 jobs:
   check_commits:
@@ -78,6 +79,7 @@ jobs:
           sed -i 's|XXXXXX/XXXXXX|${{ github.repository }}|' ./files/usr/bin/upgrade_custom_openwrt || exit 1
           chmod 755 ./files/usr/bin/upgrade_custom_openwrt
           mv -v builder_repo/${{ env.CONFIG_FILE }} .config
+          mv -v builder_repo/${{ env.DTS_FILE }} ./target/linux/mediatek/dts/
           make defconfig
 
       - name: Build firmware
