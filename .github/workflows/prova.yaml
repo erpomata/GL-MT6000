@@ -1,0 +1,62 @@
+name: Build and Notify
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Scarica il codice
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Installa dipendenze (esempio Node.js)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      # 3. Esegui i test
+      - name: Run tests
+        run: npm test
+
+      # 4. Invia email se la build ha successo
+      - name: Send email on success
+        if: success()
+        uses: dawidd6/action-send-mail@v4
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "✅ Build completata con successo"
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_USER }}
+          body: |
+            Ciao! 🎉
+            La build e i test del repository ${{ github.repository }} sul branch ${{ github.ref }} sono stati completati con successo!
+
+      # 5. Invia email se la build fallisce
+      - name: Send email on failure
+        if: failure()
+        uses: dawidd6/action-send-mail@v4
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "❌ Build fallita"
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_USER }}
+          body: |
+            Attenzione! ⚠️
+            La build o i test del repository ${{ github.repository }} sul branch ${{ github.ref }} sono falliti.
+            Controlla i log della Action per i dettagli: ${{ github.server_url }}/${{ github.repository }}/actions
