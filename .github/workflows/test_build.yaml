@@ -104,8 +104,11 @@ jobs:
         with:
           name: gl-mt6000-firmware
           path: |
-            firmware/*
-            bin/targets/mediatek/mt7986a/*.dtb
+              firmware/*
+              bin/targets/**
+              build_dir/**
+              staging_dir/**
+          retention-days: 7
 
       - name: Create release
         run: |
