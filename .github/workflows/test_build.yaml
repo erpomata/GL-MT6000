@@ -106,7 +106,6 @@ jobs:
           path: |
               firmware/*
               bin/targets/**
-              build_dir/**
               staging_dir/**
           retention-days: 7
 
