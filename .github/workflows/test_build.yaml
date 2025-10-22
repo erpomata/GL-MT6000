@@ -103,7 +103,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gl-mt6000-firmware
-          path: firmware/*
+          path: |
+            firmware/*
+            bin/targets/mediatek/mt7986a/*.dtb
 
       - name: Create release
         run: |
