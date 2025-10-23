@@ -99,16 +99,19 @@ jobs:
           find ./bin -type f \( -iname 'openwrt-*-sysupgrade.bin' -or -iname 'sha256sums' -or -iname 'config.buildinfo' \) -exec mv -v {} ./firmware/ \; ||:
           mv .config firmware/full.config ||:
 
+      - name: Debug output structure
+        run: |
+          echo "==== BIN CONTENT ===="
+          find ./bin -maxdepth 3 -type d
+          echo "==== TARGET FILES ===="
+          find ./bin -type f | head -n 50
+    
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: gl-mt6000-firmware
           path: |
               firmware/*
-              bin/targets/**
-              staging_dir/**
-          retention-days: 7
-
       - name: Create release
         run: |
           RELEASE_DATE=$(date +%F)
