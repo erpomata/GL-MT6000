@@ -83,6 +83,14 @@ jobs:
           mv -v builder_repo/${{ env.DTS_FILE }} ./target/linux/mediatek/dts/
           make defconfig
 
+      - name: Apply kernel patch for USB power control
+        run: |
+          echo "Applying custom kernel patch..."
+          mkdir -p target/linux/mediatek/patches-6.12
+          cp -v builder_repo/patches/999-9999-usb-power-control.patch target/linux/mediatek/patches-6.12/
+          echo "Patch copied successfully:"
+          ls -l target/linux/mediatek/patches-6.12/
+          
       - name: Build firmware
         run: |
           make download -j$(nproc) || {
