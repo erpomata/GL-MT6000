@@ -106,12 +106,22 @@ jobs:
           echo "==== TARGET FILES ===="
           find ./bin -type f | head -n 50
     
-      - name: Upload artifacts
+      - name: Find build output directory
+        id: find_bin
+        run: |
+          BIN_DIR=$(find ./bin -maxdepth 1 -type d -name '20*' | sort | tail -n1)
+          echo "Found bin directory: $BIN_DIR"
+          echo "bin_dir=$BIN_DIR" >> $GITHUB_OUTPUT
+      
+      - name: Upload all build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: gl-mt6000-firmware
+          name: gl-mt6000-full-build
           path: |
-              firmware/*
+            ${{ steps.find_bin.outputs.bin_dir }}/**
+            firmware/**
+          retention-days: 7
+    
       - name: Create release
         run: |
           RELEASE_DATE=$(date +%F)
