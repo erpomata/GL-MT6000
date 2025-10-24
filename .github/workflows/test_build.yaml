@@ -89,7 +89,6 @@ jobs:
           mkdir -p target/linux/mediatek/patches-6.12
           wget -O target/linux/mediatek/patches-6.12/999-9999-usb-power-control.patch \
             https://raw.githubusercontent.com/pesa1234/openwrt/d4a2843cd69dff5f732b5772f77eaecaa6ff574e/target/linux/mediatek/patches-6.12/999-9999-usb-power-control.patch
-          cp -v builder_repo/target/linux/mediatek/patches-6.12/999-9999-usb-power-control.patch target/linux/mediatek/patches-6.12/
           echo "Patch copied successfully:"
           ls -l target/linux/mediatek/patches-6.12/
           
