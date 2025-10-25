@@ -103,6 +103,16 @@ jobs:
           find ./bin -type f \( -iname 'openwrt-*-sysupgrade.bin' -or -iname 'sha256sums' -or -iname 'config.buildinfo' \) -exec mv -v {} ./firmware/ \; ||:
           mv .config firmware/full.config ||:
 
+      - name: Zip entire build
+        run: |
+          zip -r full-build.zip .
+      
+      - name: Upload full build
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-build
+          path: full-build.zip
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
