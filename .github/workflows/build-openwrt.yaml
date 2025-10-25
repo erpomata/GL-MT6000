@@ -81,6 +81,12 @@ jobs:
           mv -v builder_repo/${{ env.CONFIG_FILE }} .config
           make defconfig
 
+      # Creazione overlay per bash come shell di default
+      - name: Set root shell to bash via overlay
+        run: |
+          mkdir -p files/etc
+          echo "root:x:0:0:root:/root:/bin/bash" > files/etc/passwd
+          
       - name: Build firmware
         run: |
           make download -j$(nproc) || {
