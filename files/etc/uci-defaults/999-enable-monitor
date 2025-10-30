@@ -1,0 +1,13 @@
+#!/bin/sh
+
+SCRIPT="/etc/init.d/monitor"
+
+if [ -x "$SCRIPT" ]; then
+    echo "Enabling mioscript..."
+    $SCRIPT enable
+    $SCRIPT start
+    exit 0
+else
+    echo "mioscript not present yet, will retry next boot"
+    exit 1
+fi
