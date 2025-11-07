@@ -17,7 +17,7 @@ env:
   CONFIG_FILE: mt6000.config
   GH_TOKEN: ${{ github.token }}
   DTS_FILE: mt7986a-glinet-gl-mt6000.dts
-  BRANCH:    # ← opzionale: se lo lasci vuoto, lo calcola da solo
+  BRANCH:  next-r4.6.15.rss.mtk  # ← opzionale: se lo lasci vuoto, lo calcola da solo
 jobs:
   check_commits:
     name: Check for new commits
