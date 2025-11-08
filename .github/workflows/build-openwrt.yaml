@@ -93,7 +93,13 @@ jobs:
         run: |
           mkdir -p files/etc
           echo "root:x:0:0:root:/root:/bin/bash" > files/etc/passwd
-          
+
+      - name: Patch libnatpmp CMake version issue
+        run: |
+          # Forza CMake a usare policy >= 3.5 per evitare l'errore
+          echo 'CMAKE_OPTIONS += -DCMAKE_POLICY_VERSION_MINIMUM=3.5' >> feeds/packages/libs/libnatpmp/Makefile
+          echo "✅ Patch applicata a libnatpmp per compatibilità con CMake moderno"
+
       - name: Build firmware
         run: |
           make download -j$(nproc) || {
