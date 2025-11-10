@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
+      - work
   schedule:
     - cron: "38 1 * * *"
 
