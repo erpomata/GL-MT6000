@@ -6,17 +6,12 @@ else
   touch /var/run/upgrade_openwrt
   GITHUBREPOSITORY='XXXXXX/XXXXXX'
   eval "$(grep -m 1 DISTRIB_REVISION /etc/openwrt_release)"
-  if [ -z "$DISTRIB_REVISION" ]; then
-    echo "WARNING: can't find release version... proceed with caution!"
-    SYSUPGRADEFILE=$(curl -sS https://api.github.com/repos/${GITHUBREPOSITORY}/releases/latest | jq -r '.assets[] | select(.browser_download_url | test("sysupgrade")) | "\(.browser_download_url)"')
-  else
-    SYSUPGRADEFILE=$(curl -sS https://api.github.com/repos/${GITHUBREPOSITORY}/releases/latest | jq -r '.assets[] | select(.browser_download_url | test("sysupgrade")) | "\(.browser_download_url)"' | grep -v "$DISTRIB_REVISION")
-  fi
+  SYSUPGRADEFILE=$(curl -sS https://api.github.com/repos/${GITHUBREPOSITORY}/releases/latest | jq -r --arg exclude "$DISTRIB_REVISION" '.assets[] | select(.browser_download_url | contains("sysupgrade")) | select((($exclude | length) == 0) or (.browser_download_url | contains($exclude) | not)) | .browser_download_url')
 
   if [ -n "$SYSUPGRADEFILE" ]; then
-    SHA256SUMFILE=$(curl -sS https://api.github.com/repos/${GITHUBREPOSITORY}/releases/latest | jq -r '.assets[] | select(.browser_download_url | test("sha256sums")) | "\(.browser_download_url)"')
-    [ -n "$SHA256SUMFILE" ] && SHA256="$(curl -sL "$SHA256SUMFILE" | sed -n '/sysupgrade/s/ .*//p')"
-    [ -z "$SHA256" ] && SHA256="$(curl -sS https://api.github.com/repos/${GITHUBREPOSITORY}/releases/latest | jq -r '.assets[] | select(.browser_download_url | test("sysupgrade")) | "\(.digest)"' | sed -n 's/sha256\://p')"
+    SHA256SUMFILE=$(curl -sS https://api.github.com/repos/${GITHUBREPOSITORY}/releases/latest | jq -r '.assets[] | select(.browser_download_url | contains("sha256sums")) | .browser_download_url')
+    [ -n "$SHA256SUMFILE" ] && SHA256="$(curl -sL "$SHA256SUMFILE" | grep -m 1 sysupgrade)"
+    [ -z "$SHA256" ] && SHA256="$(curl -sS https://api.github.com/repos/${GITHUBREPOSITORY}/releases/latest | jq -r '.assets[] | select(.browser_download_url | test("sysupgrade")) | "\(.digest)"' | sed -n 's/sha256\://p') ${SYSUPGRADEFILE##*/}"
 
     if [ -n "$SHA256" ] && cd /tmp ; then
       NEWVERSION="${SYSUPGRADEFILE#*snapshot-}"
@@ -32,7 +27,7 @@ else
 
       if [ "$1" = "--now" ] || [ "$1" = "--wait" ]; then
         if curl -sOL "$SYSUPGRADEFILE" ; then
-          if echo "$SHA256 ${SYSUPGRADEFILE##*/}" | sha256sum -cs ; then
+          if echo "$SHA256" | sha256sum -cs ; then
             echo "*** INSTALLING NEW FIRMWARE ***"
             sysupgrade -v "${SYSUPGRADEFILE##*/}"
           else
@@ -51,5 +46,6 @@ else
   else
     echo "*** NO NEW FIRMWARE FOUND ***"
   fi
+  rm -f /var/run/upgrade_openwrt
 fi
 } 2>&1 | tee /dev/stderr | logger $([ ${DEBUG+x} ] && echo '-p user.debug') -t "$(basename "$0" | grep -Eo '^.{0,23}')"[$$]
