@@ -1,0 +1,17 @@
+#!/bin/sh
+# Script eseguito una sola volta al primo boot
+
+# --- 1) Creazione utente e gruppo ---
+if ! getent group adguardhome >/dev/null 2>&1; then
+    addgroup adguardhome
+fi
+
+if ! id adguardhome >/dev/null 2>&1; then
+    adduser -D -G adguardhome adguardhome
+fi
+
+# --- 2) Creazione directory e file vuoto ---
+mkdir -p /tmp/bind
+: > /tmp/bind/named.conf.local
+
+exit 0
