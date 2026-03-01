@@ -10,8 +10,4 @@ if ! id adguardhome >/dev/null 2>&1; then
     adduser -D -G adguardhome adguardhome
 fi
 
-# --- 2) Creazione directory e file vuoto ---
-mkdir -p /tmp/bind
-: > /tmp/bind/named.conf.local
-
 exit 0
