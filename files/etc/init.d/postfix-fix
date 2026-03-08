@@ -1,0 +1,23 @@
+#!/bin/sh /etc/rc.common
+# /etc/init.d/postfix-tmp
+# Usa /tmp/spool/postfix come coda temporanea
+
+START=99
+
+start() {
+    POSTFIX_QUEUE="/tmp/spool/postfix"
+
+    # Crea la directory della coda se non esiste
+    if [ ! -d "$POSTFIX_QUEUE" ]; then
+        mkdir -p "$POSTFIX_QUEUE"
+        chown -R postfix:postfix "$POSTFIX_QUEUE"
+        chmod -R 700 "$POSTFIX_QUEUE"
+    fi
+
+    # Imposta variabile di ambiente per postfix
+    export queue_directory="$POSTFIX_QUEUE"
+
+    # Imposta sottodirectory e controlla integrità
+    postfix set-permissions
+    postfix check
+}
