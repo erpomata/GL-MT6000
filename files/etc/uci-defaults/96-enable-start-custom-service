@@ -10,4 +10,6 @@ if [ -x /etc/init.d/postfix-fix ]; then
     /etc/init.d/postfix-fix start
 fi
 
+ln -s /root/99-update-and-notify-dns /etc/hotplug.d/dhcp/99-update-and-notify-dns
+
 exit 0
