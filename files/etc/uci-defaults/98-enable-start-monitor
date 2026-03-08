@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [ -x /etc/init.d/monitor ]; then
+    /etc/init.d/monitor enable
+    /etc/init.d/monitor start
+fi
+
+exit 0
