@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# esporta tutte le variabili di hotplug
+export $(env | awk -F= '{print $1}')
+
+# esegui il vero script in background
+/root/update-dns.sh &
+exit 0
