@@ -2,7 +2,7 @@
 # /etc/init.d/postfix-tmp
 # Usa /tmp/spool/postfix come coda temporanea
 
-START=99
+START=71
 
 start() {
     POSTFIX_QUEUE="/tmp/spool/postfix"
