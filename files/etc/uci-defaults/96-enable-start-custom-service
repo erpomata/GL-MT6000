@@ -1,20 +1,29 @@
 #!/bin/sh
 
-if [ -f /etc/init.d/monitor ]; then
-    chmod +x /etc/init.d/monitor
-    /etc/init.d/monitor enable
-    /etc/init.d/monitor start
+# Definizione variabili
+MONITOR_SCRIPT="/etc/init.d/monitor"
+POSTFIX_SCRIPT="/etc/init.d/postfix-fix"
+DNS_SCRIPT="/root/99-update-and-notify-dns"
+HOTPLUG_LINK="/etc/hotplug.d/dhcp/99-update-and-notify-dns"
+
+# Monitor
+if [ -f "$MONITOR_SCRIPT" ]; then
+    chmod +x "$MONITOR_SCRIPT"
+    "$MONITOR_SCRIPT" enable
+    "$MONITOR_SCRIPT" start
 fi
 
-if [ -f /etc/init.d/postfix-fix ]; then
-    chmod +x /etc/init.d/postfix-fix
-    /etc/init.d/postfix-fix enable
-    /etc/init.d/postfix-fix start
+# Postfix fix
+if [ -f "$POSTFIX_SCRIPT" ]; then
+    chmod +x "$POSTFIX_SCRIPT"
+    "$POSTFIX_SCRIPT" enable
+    "$POSTFIX_SCRIPT" start
 fi
 
-if [ -f /root/99-update-and-notify-dns ]; then
-    chmod +x /root/99-update-and-notify-dns
-    ln -sf /root/99-update-and-notify-dns /etc/hotplug.d/dhcp/99-update-and-notify-dns
+# DNS hotplug
+if [ -f "$DNS_SCRIPT" ]; then
+    chmod +x "$DNS_SCRIPT"
+    ln -sf "$DNS_SCRIPT" "$HOTPLUG_LINK"
 fi
 
 exit 0
