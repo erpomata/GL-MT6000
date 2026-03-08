@@ -14,7 +14,7 @@ fi
 
 if [ -f /root/99-update-and-notify-dns ]; then
     chmod +x /root/99-update-and-notify-dns
-    ln -s /root/99-update-and-notify-dns /etc/hotplug.d/dhcp/99-update-and-notify-dns
+    ln -sf /root/99-update-and-notify-dns /etc/hotplug.d/dhcp/99-update-and-notify-dns
 fi
 
 exit 0
