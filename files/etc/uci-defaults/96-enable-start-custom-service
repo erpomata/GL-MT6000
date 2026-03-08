@@ -1,15 +1,20 @@
 #!/bin/sh
 
-if [ -x /etc/init.d/monitor ]; then
+if [ -f /etc/init.d/monitor ]; then
+    chmod -x /etc/init.d/monitor
     /etc/init.d/monitor enable
     /etc/init.d/monitor start
 fi
 
-if [ -x /etc/init.d/postfix-fix ]; then
+if [ -f /etc/init.d/postfix-fix ]; then
+    chmod -x /etc/init.d/postfix-fix
     /etc/init.d/postfix-fix enable
     /etc/init.d/postfix-fix start
 fi
 
-ln -s /root/99-update-and-notify-dns /etc/hotplug.d/dhcp/99-update-and-notify-dns
+if [ -f /root/99-update-and-notify-dns ]; then
+    chmod -x /root/99-update-and-notify-dns
+    ln -s /root/99-update-and-notify-dns /etc/hotplug.d/dhcp/99-update-and-notify-dns
+fi
 
 exit 0
