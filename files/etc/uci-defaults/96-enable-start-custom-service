@@ -10,14 +10,14 @@ HOTPLUG_LINK="/etc/hotplug.d/dhcp/99-update-and-notify-dns"
 if [ -f "$MONITOR_SCRIPT" ]; then
     chmod +x "$MONITOR_SCRIPT"
     "$MONITOR_SCRIPT" enable
-    "$MONITOR_SCRIPT" start
+    #"$MONITOR_SCRIPT" start
 fi
 
 # Postfix fix
 if [ -f "$POSTFIX_SCRIPT" ]; then
     chmod +x "$POSTFIX_SCRIPT"
     "$POSTFIX_SCRIPT" enable
-    "$POSTFIX_SCRIPT" start
+    #"$POSTFIX_SCRIPT" start
 fi
 
 # DNS hotplug
