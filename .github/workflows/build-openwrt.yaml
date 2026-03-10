@@ -94,6 +94,13 @@ jobs:
               mv "$ORIG_FILE" "${ORIG_FILE}.orig"
           fi
           # ----------------------------
+          # ----------------------------
+          # Metto il file named.orig nella build
+          OVERLAY_DIR=files/etc/init.d
+          mkdir -p "$OVERLAY_DIR"
+          cp "${ORIG_FILE}.orig" "$OVERLAY_DIR/named.orig"
+          echo "Backup named.orig is now in overlay: $OVERLAY_DIR/named.orig"
+          # ----------------------------
           
           mv -v builder_repo/files ./
           chmod -v 755 files/usr/bin/upgrade_custom_openwrt files/www/cgi-bin/github_*
