@@ -86,6 +86,19 @@ jobs:
           for file in $(grep -rl XXXXXX builder_repo/); do echo "Patching: $file"; sed -i 's|XXXXXX/YYYYYY|${{ github.repository }}|g' "$file" || exit 1; done
           patch -p1 < builder_repo/attendedsysupgrade-with-GitHub.patch
           patch -p1 < builder_repo/001-add-setuptools-scm-dep.patch
+
+
+          # ✅ Fix robusto per python-urllib3: aggiunge il build-dep solo se manca
+          MAKEFILE_PATH="feeds/packages/lang/python/python-urllib3/Makefile"
+          
+          if ! grep -q "PKG_BUILD_DEPENDS:=python-setuptools-scm/host" "$MAKEFILE_PATH"; then
+              echo "Patching python-urllib3 Makefile: adding missing setuptools-scm"
+              sed -i '/PKG_SOURCE_URL/a PKG_BUILD_DEPENDS:=python-setuptools-scm\/host' "$MAKEFILE_PATH"
+              echo "✅ Patch applicata"
+          else
+              echo "✅ Patch già presente, nessuna modifica necessaria"
+          fi
+
           
           mv -v builder_repo/files ./
           chmod -v 755 files/usr/bin/upgrade_custom_openwrt files/www/cgi-bin/github_*
