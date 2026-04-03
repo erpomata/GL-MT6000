@@ -85,7 +85,7 @@ jobs:
           rm -frv builder_repo/.git builder_repo/.github
           for file in $(grep -rl XXXXXX builder_repo/); do echo "Patching: $file"; sed -i 's|XXXXXX/YYYYYY|${{ github.repository }}|g' "$file" || exit 1; done
           patch -p1 < builder_repo/attendedsysupgrade-with-GitHub.patch
-          patch -p1 < builder_repo/001-add-setuptools-scm-dep.patch
+          #patch -p1 < builder_repo/001-add-setuptools-scm-dep.patch
 
 
           # ✅ Fix robusto per python-urllib3: aggiunge il build-dep solo se manca
