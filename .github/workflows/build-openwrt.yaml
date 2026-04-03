@@ -79,6 +79,9 @@ jobs:
           # run again because sometimes it misses some dependencies
           ./scripts/feeds install -a
 
+          # ✅ FIX: installare il pacchetto host richiesto da urllib3
+          ./scripts/feeds install python-setuptools-scm/host
+
       - name: Setup configuration and custom files
         run: |
           rm -frv builder_repo/.git builder_repo/.github
