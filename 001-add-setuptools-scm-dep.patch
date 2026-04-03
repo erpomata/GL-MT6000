@@ -1,5 +1,5 @@
---- a/Makefile
-+++ b/Makefile
+--- a/feeds/packages/lang/python/python-urllib3/Makefile
++++ b/feeds/packages/lang/python/python-urllib3/Makefile
 @@ -17,6 +17,7 @@
  
  PKG_SOURCE:=urllib3-$(PKG_VERSION).tar.gz
