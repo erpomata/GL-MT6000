@@ -1,0 +1,206 @@
+name: OpenWrt MT6000 ULTIMATE
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 0"   # ogni domenica alle 03:00
+
+env:
+  REPO: pesa1234/openwrt
+  CONFIG_FILE: mt6000.config
+
+jobs:
+
+  # 🔍 JOB 1: controlla se ci sono nuovi commit
+  check:
+    runs-on: ubuntu-22.04
+    outputs:
+      branch: ${{ steps.detect.outputs.branch }}
+      commit: ${{ steps.detect.outputs.commit }}
+      build: ${{ steps.detect.outputs.build }}
+
+    steps:
+      - name: Detect latest branch
+        id: detect
+        run: |
+          set -e
+
+          # 🔎 Trova ultimo branch next-*
+          BRANCH=$(git ls-remote https://github.com/${{ env.REPO }}.git "refs/heads/next-*" \
+            | sed -e 's|.*refs/heads/||' \
+            | grep -viE 'test|beta' \
+            | sort -V | tail -n1)
+
+          # fallback su main se non trovato
+          [ -z "$BRANCH" ] && BRANCH="main"
+
+          # 🧠 recupera commit SHA
+          COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git $BRANCH | awk '{print $1}')
+
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+
+          # 📦 controlla ultima release
+          LAST=$(gh api repos/${{ github.repository }}/releases/latest --jq .body 2>/dev/null || echo "")
+
+          # 🔁 decide se buildare
+          if echo "$LAST" | grep -q "$COMMIT"; then
+            echo "build=false" >> $GITHUB_OUTPUT
+          else
+            echo "build=true" >> $GITHUB_OUTPUT
+          fi
+
+
+  # 🏗️ JOB 2: build vera e propria
+  build:
+    needs: check
+    if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+
+    steps:
+      # 📥 checkout del repo con la config
+      - uses: actions/checkout@v4
+
+      # ⚡ cache per velocizzare le build successive
+      - name: Cache OpenWrt
+        uses: actions/cache@v4
+        with:
+          path: |
+            openwrt/dl
+            openwrt/staging_dir
+          key: openwrt-${{ needs.check.outputs.branch }}
+
+      # 🔧 installa dipendenze
+      - name: Install deps
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential clang flex g++ gawk gcc-multilib \
+          gettext git libncurses-dev libssl-dev python3-distutils rsync unzip \
+          zlib1g-dev file wget curl ccache jq
+
+      # 📦 clona repo pesa con branch automatico
+      - name: Clone OpenWrt
+        run: |
+          git clone https://github.com/${{ env.REPO }}.git openwrt
+          cd openwrt
+          git checkout ${{ needs.check.outputs.branch }} || git checkout main
+
+      # 📦 aggiorna feeds
+      - name: Update feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      # ⚙️ applica configurazione personalizzata
+      - name: Apply config
+        run: |
+          cp ${{ env.CONFIG_FILE }} openwrt/.config
+          cd openwrt
+          make defconfig
+
+      # 🚫 rimuove pacchetti problematici
+      - name: Clean problematic packages
+        run: |
+          cd openwrt
+          sed -i '/fwupd/d' .config || true
+          sed -i '/kmod-nvidia/d' .config || true
+          sed -i '/kmod-vbox/d' .config || true
+          sed -i '/python3-pkg-resources/d' .config || true
+          make defconfig
+
+      # 🔧 toolchain (compilatori ecc.)
+      - name: Build toolchain
+        run: |
+          cd openwrt
+          make -j$(nproc) tools/install toolchain/install
+
+      # 🎯 build firmware
+      - name: Build firmware
+        run: |
+          cd openwrt
+          make -j$(nproc) target/compile
+
+      # 📦 build pacchetti (continua anche con errori)
+      - name: Build packages
+        run: |
+          cd openwrt
+          make -k -j$(nproc) package/compile
+
+      # 📚 genera repository opkg
+      - name: Generate repo
+        run: |
+          cd openwrt
+          make package/index
+
+      # 📦 prepara file release
+      - name: Prepare release
+        run: |
+          cd openwrt
+
+          DATE=$(date +%Y-%m-%d)
+          COMMIT=${{ needs.check.outputs.commit }}
+          SHORT=${COMMIT:0:7}
+
+          mkdir -p release/firmware
+          mkdir -p release/packages
+
+          cp -r bin/targets/*/* release/firmware/
+          cp -r bin/packages/* release/packages/
+
+          cd release
+          tar -czf packages.tar.gz packages
+
+          echo "DATE=$DATE" >> $GITHUB_ENV
+          echo "SHORT=$SHORT" >> $GITHUB_ENV
+
+      # 📧 invio email in caso di successo
+      - name: Send email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USER }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: OpenWrt Build SUCCESS
+          body: |
+            ✅ Build completata
+
+            🔗 Release:
+            ${{ github.server_url }}/${{ github.repository }}/releases
+
+            🔗 Run:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          to: ${{ secrets.MAIL_USER }}
+          from: OpenWrt CI <${{ secrets.MAIL_USER }}>
+
+      # 🚀 pubblica release
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mt6000-${{ env.DATE }}-${{ env.SHORT }}
+          name: MT6000 ${{ env.DATE }}
+          body: |
+            Branch: ${{ needs.check.outputs.branch }}
+            Commit: ${{ needs.check.outputs.commit }}
+
+          files: |
+            openwrt/release/firmware/**
+            openwrt/release/packages.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 🧹 pulizia vecchie release (mantiene le ultime 10)
+      - name: Clean old releases
+        run: |
+          echo "🧹 Cleaning old releases..."
+
+          gh api repos/${{ github.repository }}/releases \
+          | jq -r '.[10:][] | "\(.id) \(.tag_name)"' \
+          | while read id tag; do
+              echo "Deleting release $tag"
+              gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
+            done
