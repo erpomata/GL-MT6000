@@ -147,6 +147,17 @@ jobs:
             mv "$f" "$NEW_FILE"
           done
 
+      - name: Upload reject files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-files
+          path: |
+            **/*.rej
+            **/*.log
+            .config
+            build_dir/**/linux-*/.config
+            
       - name: Upload artifacts
         uses: actions/upload-artifact@v7.0.0
         with:
