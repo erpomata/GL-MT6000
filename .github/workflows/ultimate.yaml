@@ -1,5 +1,9 @@
 name: OpenWrt MT6000 ULTIMATE
 
+permissions:
+  contents: write
+  actions: write
+
 on:
   workflow_dispatch:
   schedule:
@@ -204,3 +208,14 @@ jobs:
               gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
               gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
             done
+
+      - name: Deploy to GitHub Pages
+        run: |
+          mkdir -p public
+          cp -r openwrt/release/packages/* public/
+      
+      - name: Publish Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
