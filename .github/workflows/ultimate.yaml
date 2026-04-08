@@ -123,7 +123,8 @@ jobs:
       - name: Build firmware
         run: |
           cd openwrt
-          make -j$(nproc) target/compile
+          #make -j$(nproc) target/compile
+          make -j$(nproc)
 
       # 📦 build pacchetti (continua anche con errori)
       - name: Build packages
@@ -149,7 +150,17 @@ jobs:
           mkdir -p release/firmware
           mkdir -p release/packages
 
-          cp -r bin/targets/*/* release/firmware/
+          echo "📂 Contenuto bin:"
+          ls -R bin || true
+
+          # copia firmware SOLO se esiste
+          if [ -d bin/targets ]; then
+            cp -r bin/targets/*/* release/firmware/
+          else
+            echo "⚠️ Nessun firmware trovato!"
+            exit 1
+          fi
+          #cp -r bin/targets/*/* release/firmware/
           cp -r bin/packages/* release/packages/
 
           cd release
