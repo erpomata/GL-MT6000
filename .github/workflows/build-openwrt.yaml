@@ -165,7 +165,7 @@ jobs:
           path: firmware/*
       
       - name: Send success email
-        if: success()  # solo se tutto ok
+        if: success()
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
@@ -173,8 +173,13 @@ jobs:
           username: ${{ secrets.MAIL_USER }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: Build OpenWrt Success
-          body: La build è completata con successo!
-          to: paolo.giammarco@gmail.com
+          body: |
+            ✅ Build completata con successo!
+      
+            🔗 Artifact disponibili qui:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      
+          to: ${{ secrets.MAIL_USER }}
           from: OpenWrt CI <${{ secrets.MAIL_USER }}>
     
       - name: Create release
