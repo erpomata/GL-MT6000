@@ -12,7 +12,7 @@ on:
 env:
   REPO: pesa1234/openwrt
   CONFIG_FILE: mt6000.config
-  REPO_DIR: snapshot
+  REPO_DIR: openwrt
 
 jobs:
 
