@@ -7,7 +7,7 @@ permissions:
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 6 * * 0"   # ogni domenica alle 06:00
+    - cron: "0 0 * * 0"   # ogni domenica a mezzanotte (tra sabato e domenica)
 
 env:
   REPO: pesa1234/openwrt
