@@ -199,6 +199,7 @@ jobs:
           if [ -z "$FILES" ]; then
             echo "❌ Nessun firmware sysupgrade trovato!"
             echo "📂 Debug struttura:"
+            #ls -R bin || true
             exit 1
           else
             echo "✅ Firmware trovato:"
