@@ -118,7 +118,7 @@ jobs:
               echo "Patching: $file"
               cp "$file" "${file}.bak"
               sed -i "s|XXXXXX/YYYYYY|${GITHUB_REPOSITORY}|g" "$file" || exit 1
-              diff "${file}.bak" "$file"
+              diff "${file}.bak" "$file" || true  # <--- Forza il successo
           done
 
           if [ -f builder_repo/attendedsysupgrade-with-GitHub.patch ]; then
