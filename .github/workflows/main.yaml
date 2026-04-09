@@ -1,4 +1,4 @@
-name: OpenWrt MT6000 ULTIMATE
+name: OpenWrt MT6000 MAIN
 
 permissions:
   contents: write
@@ -7,7 +7,7 @@ permissions:
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 * * 0"   # ogni domenica alle 03:00
+    - cron: "0 6 * * 0"   # ogni domenica alle 06:00
 
 env:
   REPO: pesa1234/openwrt
@@ -69,9 +69,9 @@ jobs:
           path: |
             openwrt/dl
             openwrt/staging_dir
-            key: openwrt-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
-            restore-keys: |
-              openwrt-${{ needs.check.outputs.branch }}
+        key: openwrt-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
+        restore-keys: |
+          openwrt-${{ needs.check.outputs.branch }}
 
       # 🔧 installa dipendenze
       - name: Install deps
