@@ -113,7 +113,9 @@ jobs:
           rm -frv builder_repo/.git builder_repo/.github
           for file in $(grep -rl XXXXXX builder_repo/); do
               echo "Patching: $file"
+              cp "$file" "${file}.bak"
               sed -i "s|XXXXXX/YYYYYY|${GITHUB_REPOSITORY}|g" "$file" || exit 1
+              diff "${file}.bak" "$file"
           done
           patch -p1 < builder_repo/attendedsysupgrade-with-GitHub.patch
           mv -v builder_repo/files ${{ env.REPO_DIR }}/
