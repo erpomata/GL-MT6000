@@ -98,6 +98,11 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      - name: Checkout current repository
+        uses: actions/checkout@v6.0.2
+        with:
+         path: "builder_repo"
+
       # ⚙️ applica configurazione personalizzata
       - name: Apply config
         run: |
