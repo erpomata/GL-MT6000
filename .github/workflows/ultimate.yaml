@@ -142,30 +142,60 @@ jobs:
       - name: Prepare release
         run: |
           cd openwrt
-
+ 
           DATE=$(date +%Y-%m-%d)
           COMMIT=${{ needs.check.outputs.commit }}
           SHORT=${COMMIT:0:7}
-
+          
           mkdir -p release/firmware
           mkdir -p release/packages
-
+          
           echo "📂 Contenuto bin:"
           ls -R bin || true
-
-          # copia firmware SOLO se esiste
-          if [ -d bin/targets ]; then
-            cp -r bin/targets/*/* release/firmware/
+          
+          # =========================
+          # 🔥 FIRMWARE
+          # =========================
+          FILES=$(ls bin/*/targets/*/*/*sysupgrade.bin 2>/dev/null || true)
+          
+          if [ -z "$FILES" ]; then
+            echo "❌ Nessun firmware sysupgrade trovato!"
+            echo "📂 Debug struttura:"
+            ls -R bin || true
+            exit 1
           else
-            echo "⚠️ Nessun firmware trovato!"
+            echo "✅ Firmware trovato:"
+            echo "$FILES"
+            cp -r bin/*/targets/*/* release/firmware/
+          fi
+          
+          # =========================
+          # 📦 PACKAGES
+          # =========================
+          PKG_PATH=$(ls -d bin/*/packages/* 2>/dev/null | head -n1)
+          
+          if [ -z "$PKG_PATH" ]; then
+            echo "❌ Nessun pacchetto trovato!"
+            ls -R bin || true
             exit 1
           fi
-          #cp -r bin/targets/*/* release/firmware/
-          cp -r bin/packages/* release/packages/
-
+          
+          echo "📦 Copio pacchetti da: $PKG_PATH"
+          
+          cp -r $PKG_PATH/* release/packages/
+          
+          # rigenera index opkg
+          cd release/packages
+          ../../scripts/ipkg-make-index.sh . > Packages
+          gzip -f Packages
+          cd ../..
+          
+          # =========================
+          # 📦 ARCHIVIO
+          # =========================
           cd release
           tar -czf packages.tar.gz packages
-
+          
           echo "DATE=$DATE" >> $GITHUB_ENV
           echo "SHORT=$SHORT" >> $GITHUB_ENV
 
