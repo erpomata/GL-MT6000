@@ -87,9 +87,10 @@ jobs:
       # 📦 clona repo pesa con branch automatico
       - name: Clone OpenWrt
         run: |
+          rm -rf ${{ env.REPO_DIR }}
           git clone https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
           cd ${{ env.REPO_DIR }}
-          git checkout ${{ needs.check.outputs.branch }} || git checkout main
+          git checkout ${{ needs.check.outputs.branch }}
 
       # 📦 aggiorna feeds
       - name: Update feeds
