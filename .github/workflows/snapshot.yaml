@@ -108,6 +108,8 @@ jobs:
         run: |
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
           
+          # inizializza variabile
+          PATCH_STATUS="applied"
 
           # patcha senza cambiare cartella
           rm -frv builder_repo/.git builder_repo/.github
@@ -117,7 +119,17 @@ jobs:
               sed -i "s|XXXXXX/YYYYYY|${GITHUB_REPOSITORY}|g" "$file" || exit 1
               diff "${file}.bak" "$file"
           done
-          patch -p1 < builder_repo/attendedsysupgrade-with-GitHub.patch
+
+          if [ -f builder_repo/attendedsysupgrade-with-GitHub.patch ]; then
+            if ! patch -p1 --forward < builder_repo/attendedsysupgrade-with-GitHub.patch; then
+                PATCH_STATUS="skipped"
+                echo "⚠️ Patch non applicata"
+            fi
+          else
+            echo "⚠️ Patch non trovata, procedo comunque"
+            PATCH_STATUS="missing"
+          fi
+
           mv -v builder_repo/files ${{ env.REPO_DIR }}/
           chmod -v 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt ${{ env.REPO_DIR }}/files/www/cgi-bin/github_*
 
@@ -228,6 +240,7 @@ jobs:
             🔗 Run:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
+           ⚠️ Patch status: ${{ env.PATCH_STATUS }}
           to: ${{ secrets.MAIL_USER }}
           from: OpenWrt CI <${{ secrets.MAIL_USER }}>
 
