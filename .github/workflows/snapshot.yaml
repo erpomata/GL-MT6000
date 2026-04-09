@@ -106,9 +106,10 @@ jobs:
       # ⚙️ applica configurazione personalizzata
       - name: Apply config
         run: |
-          ls -R || true
+          # ls -R || true
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
-          
+          cp .github/workflows/snapshot.yaml ${{ env.REPO_DIR }}/
+
           # inizializza variabile
           PATCH_STATUS="applied"
 
@@ -122,10 +123,12 @@ jobs:
           done
 
           if [ -f builder_repo/attendedsysupgrade-with-GitHub.patch ]; then
-            if ! patch -p1 --forward < builder_repo/attendedsysupgrade-with-GitHub.patch; then
-                PATCH_STATUS="skipped"
-                echo "⚠️ Patch non applicata"
-            fi
+              cd ${{ env.REPO_DIR }}
+              if ! patch -p1 --forward < ../builder_repo/attendedsysupgrade-with-GitHub.patch; then
+                  PATCH_STATUS="skipped"
+                  echo "⚠️ Patch non applicata"
+              fi
+              cd ..
           else
             echo "⚠️ Patch non trovata, procedo comunque"
             PATCH_STATUS="missing"
@@ -157,13 +160,13 @@ jobs:
       - name: Build firmware
         run: |
           cd ${{ env.REPO_DIR }}
-          make -j$(nproc)
+          make -j$(nproc) || make -j1 V=s
 
       # 📦 build pacchetti (continua anche con errori)
-      - name: Build packages
-        run: |
-          cd ${{ env.REPO_DIR }}
-          make -k -j$(nproc) package/compile
+      #- name: Build packages
+      #  run: |
+      #    cd ${{ env.REPO_DIR }}
+      #    make -k -j$(nproc) package/compile
 
       # 📚 genera repository opkg
       - name: Generate repo
@@ -183,8 +186,8 @@ jobs:
           mkdir -p release/firmware
           mkdir -p release/packages
           
-          echo "📂 Contenuto di: "${{ env.REPO_DIR }}
-          ls -R || true
+          #echo "📂 Contenuto di: "${{ env.REPO_DIR }}
+          #ls -R || true
           
           # =========================
           # 🔥 FIRMWARE
@@ -263,6 +266,9 @@ jobs:
           files: |
             ${{ env.REPO_DIR }}/release/firmware/**
             ${{ env.REPO_DIR }}/release/packages.tar.gz
+            ${{ env.REPO_DIR }}/mt6000.config
+            ${{ env.REPO_DIR }}/snapshot.yaml   # se l'hai copiato
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
