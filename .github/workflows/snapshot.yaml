@@ -12,6 +12,7 @@ on:
 env:
   REPO: pesa1234/openwrt
   CONFIG_FILE: mt6000.config
+  REPO_DIR: snapshot
 
 jobs:
 
@@ -54,7 +55,6 @@ jobs:
             echo "build=true" >> $GITHUB_OUTPUT
           fi
 
-
   # 🏗️ JOB 2: build vera e propria
   build:
     needs: check
@@ -70,8 +70,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            openwrt/dl
-            openwrt/staging_dir
+            ${{ env.REPO_DIR }}/dl
+            ${{ env.REPO_DIR }}/staging_dir
           key: openwrt-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
           restore-keys: |
             openwrt-${{ needs.check.outputs.branch }}
@@ -87,22 +87,22 @@ jobs:
       # 📦 clona repo pesa con branch automatico
       - name: Clone OpenWrt
         run: |
-          git clone https://github.com/${{ env.REPO }}.git openwrt
-          cd openwrt
+          git clone https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
+          cd ${{ env.REPO_DIR }}
           git checkout ${{ needs.check.outputs.branch }} || git checkout main
 
       # 📦 aggiorna feeds
       - name: Update feeds
         run: |
-          cd openwrt
+          cd ${{ env.REPO_DIR }}
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
       # ⚙️ applica configurazione personalizzata
       - name: Apply config
         run: |
-          cp ${{ env.CONFIG_FILE }} openwrt/.config
-          cd openwrt
+          cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
+          cd ${{ env.REPO_DIR }}
 
           rm -frv builder_repo/.git builder_repo/.github
           for file in $(grep -rl XXXXXX builder_repo/); do echo "Patching: $file"; sed -i 's|XXXXXX/YYYYYY|${{ github.repository }}|g' "$file" || exit 1; done
@@ -116,7 +116,7 @@ jobs:
       # 🚫 rimuove pacchetti problematici
       - name: Clean problematic packages
         run: |
-          cd openwrt
+          cd ${{ env.REPO_DIR }}
           sed -i '/fwupd/d' .config || true
           sed -i '/kmod-nvidia/d' .config || true
           sed -i '/kmod-vbox/d' .config || true
@@ -126,32 +126,31 @@ jobs:
       # 🔧 toolchain (compilatori ecc.)
       - name: Build toolchain
         run: |
-          cd openwrt
+          cd ${{ env.REPO_DIR }}
           make -j$(nproc) tools/install toolchain/install
 
       # 🎯 build firmware
       - name: Build firmware
         run: |
-          cd openwrt
-          #make -j$(nproc) target/compile
+          cd ${{ env.REPO_DIR }}
           make -j$(nproc)
 
       # 📦 build pacchetti (continua anche con errori)
       - name: Build packages
         run: |
-          cd openwrt
+          cd ${{ env.REPO_DIR }}
           make -k -j$(nproc) package/compile
 
       # 📚 genera repository opkg
       - name: Generate repo
         run: |
-          cd openwrt
+          cd ${{ env.REPO_DIR }}
           make package/index
 
       # 📦 prepara file release
       - name: Prepare release
         run: |
-          cd openwrt
+          cd ${{ env.REPO_DIR }}
  
           DATE=$(date +%Y-%m-%d)
           COMMIT=${{ needs.check.outputs.commit }}
@@ -163,14 +162,10 @@ jobs:
           echo "📂 Contenuto bin:"
           ls -R bin || true
           
-          # =========================
           # 🔥 FIRMWARE
-          # =========================
           FILES=$(ls bin/*/targets/*/*/*sysupgrade.bin 2>/dev/null || true)
-          
           if [ -z "$FILES" ]; then
             echo "❌ Nessun firmware sysupgrade trovato!"
-            echo "📂 Debug struttura:"
             ls -R bin || true
             exit 1
           else
@@ -179,11 +174,8 @@ jobs:
             cp -r bin/*/targets/*/* release/firmware/
           fi
           
-          # =========================
           # 📦 PACKAGES
-          # =========================
           PKG_PATH=$(find bin -type d -path "*/packages/*" | head -n1)
-          
           if [ -z "$PKG_PATH" ]; then
             echo "❌ Nessun pacchetto trovato!"
             ls -R bin || true
@@ -191,7 +183,6 @@ jobs:
           fi
           
           echo "📦 Copio pacchetti da: $PKG_PATH"
-          
           cp -r $PKG_PATH/* release/packages/
           
           # rigenera index opkg
@@ -200,9 +191,7 @@ jobs:
           gzip -f Packages
           cd ../..
           
-          # =========================
-          # 📦 ARCHIVIO
-          # =========================
+          # archivia pacchetti
           cd release
           tar -czf packages.tar.gz packages
           
@@ -240,10 +229,9 @@ jobs:
           body: |
             Branch: ${{ needs.check.outputs.branch }}
             Commit: ${{ needs.check.outputs.commit }}
-
           files: |
-            openwrt/release/firmware/**
-            openwrt/release/packages.tar.gz
+            ${{ env.REPO_DIR }}/release/firmware/**
+            ${{ env.REPO_DIR }}/release/packages.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -251,7 +239,6 @@ jobs:
       - name: Clean old releases
         run: |
           echo "🧹 Cleaning old releases..."
-
           gh api repos/${{ github.repository }}/releases \
             | jq -r '.[] | select(.tag_name | startswith("snapshot-")) | "\(.id) \(.tag_name)"' \
             | tail -n +11 \
@@ -264,7 +251,7 @@ jobs:
       - name: Deploy to GitHub Pages
         run: |
           mkdir -p public/snapshot
-          cp -r openwrt/release/packages/* public/snapshot
+          cp -r ${{ env.REPO_DIR }}/release/packages/* public/snapshot
       
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4
