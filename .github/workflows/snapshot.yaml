@@ -127,6 +127,8 @@ jobs:
               if ! patch -p1 --forward < ../builder_repo/attendedsysupgrade-with-GitHub.patch; then
                   PATCH_STATUS="skipped"
                   echo "⚠️ Patch non applicata"
+              else
+                  echo "✅ Patch applicata"
               fi
               cd ..
           else
