@@ -106,6 +106,7 @@ jobs:
       # ⚙️ applica configurazione personalizzata
       - name: Apply config
         run: |
+          ls -R || true
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
           
           # inizializza variabile
@@ -183,7 +184,7 @@ jobs:
           mkdir -p release/packages
           
           echo "📂 Contenuto di: "${{ env.REPO_DIR }}
-          ls -R bin || true
+          ls -R || true
           
           # =========================
           # 🔥 FIRMWARE
@@ -192,7 +193,6 @@ jobs:
           if [ -z "$FILES" ]; then
             echo "❌ Nessun firmware sysupgrade trovato!"
             echo "📂 Debug struttura:"
-            ls -R bin || true
             exit 1
           else
             echo "✅ Firmware trovato:"

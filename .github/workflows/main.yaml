@@ -149,7 +149,7 @@ jobs:
           mkdir -p release/packages
           
           echo "📂 Contenuto di: "${{ env.REPO_DIR }}
-          ls -R bin || true
+          ls -R || true
           
           # =========================
           # 🔥 FIRMWARE
