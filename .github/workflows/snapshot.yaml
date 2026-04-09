@@ -246,8 +246,8 @@ jobs:
 
             🔗 Run:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-           ⚠️ Patch status: ${{ env.PATCH_STATUS }}
+            
+            ⚠️ Patch status: ${{ env.PATCH_STATUS }}
           to: ${{ secrets.MAIL_USER }}
           from: OpenWrt CI <${{ secrets.MAIL_USER }}>
 
