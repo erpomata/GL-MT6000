@@ -107,15 +107,19 @@ jobs:
       - name: Apply config
         run: |
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
-          cd ${{ env.REPO_DIR }}
-
-          rm -frv builder_repo/.git builder_repo/.github
-          for file in $(grep -rl XXXXXX builder_repo/); do echo "Patching: $file"; sed -i 's|XXXXXX/YYYYYY|${{ github.repository }}|g' "$file" || exit 1; done
-          patch -p1 < builder_repo/attendedsysupgrade-with-GitHub.patch
-      
-          mv -v builder_repo/files ./
-          chmod -v 755 files/usr/bin/upgrade_custom_openwrt files/www/cgi-bin/github_*
           
+
+          # patcha senza cambiare cartella
+          rm -frv builder_repo/.git builder_repo/.github
+          for file in $(grep -rl XXXXXX builder_repo/); do
+              echo "Patching: $file"
+              sed -i "s|XXXXXX/YYYYYY|${GITHUB_REPOSITORY}|g" "$file" || exit 1
+          done
+          patch -p1 < builder_repo/attendedsysupgrade-with-GitHub.patch
+          mv -v builder_repo/files ${{ env.REPO_DIR }}/
+          chmod -v 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt ${{ env.REPO_DIR }}/files/www/cgi-bin/github_*
+
+          cd ${{ env.REPO_DIR }}
           make defconfig
 
       # 🚫 rimuove pacchetti problematici
