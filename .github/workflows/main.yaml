@@ -144,6 +144,17 @@ jobs:
           chmod -v 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt ${{ env.REPO_DIR }}/files/www/cgi-bin/github_*
 
           cd ${{ env.REPO_DIR }}
+
+          # Rimuove definizioni esistenti per evitare duplicati
+          sed -i '/CONFIG_VERSION_NUMBER/d' .config
+          sed -i '/CONFIG_VERSION_CODE/d' .config
+          
+          # Usa la variabile BUILD_TYPE definita in cima al file
+          echo 'CONFIG_VERSION_NUMBER="${{ env.BUILD_TYPE }}"' >> .config
+          
+          # Aggiunge la data per rendere il file unico (es. snapshot-2026-04-10)
+          echo "CONFIG_VERSION_CODE=\"$(date +%Y-%m-%d)\"" >> .config
+
           make defconfig
 
       # 🚫 rimuove pacchetti problematici
