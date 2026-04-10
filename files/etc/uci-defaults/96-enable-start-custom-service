@@ -14,14 +14,12 @@ SYSTEMINFO_SCRIPT="/root/systemInfoJson.sh"
 if [ -f "$MONITOR_SCRIPT" ]; then
     chmod +x "$MONITOR_SCRIPT"
     "$MONITOR_SCRIPT" enable
-    #"$MONITOR_SCRIPT" start
 fi
 
 # Postfix fix
 if [ -f "$POSTFIX_SCRIPT" ]; then
     chmod +x "$POSTFIX_SCRIPT"
     "$POSTFIX_SCRIPT" enable
-    #"$POSTFIX_SCRIPT" start
 fi
 
 # DNS hotplug
@@ -39,11 +37,22 @@ fi
 # Named (fix)
 # Faccio il backup dello script di avvio originale e lo sostiuisco col mio personalizzato
 if [ -f "$NAMED_SCRIPT.pg" ]; then
+    # Controlla se il file destinazione esiste già
     if [ -f "$NAMED_SCRIPT" ]; then
-        mv "$NAMED_SCRIPT" "$NAMED_SCRIPT.orig"
+        # Esegui la logica solo se i file sono diversi
+        if ! diff -q "$NAMED_SCRIPT.pg" "$NAMED_SCRIPT" > /dev/null; then
+            mv "$NAMED_SCRIPT" "$NAMED_SCRIPT.orig"
+            mv "$NAMED_SCRIPT.pg" "$NAMED_SCRIPT"
+            chmod 755 "$NAMED_SCRIPT"
+        else
+            # Opzionale: rimuovi il file .pg se è identico per pulizia
+            rm "$NAMED_SCRIPT.pg"
+        fi
+    else
+        # Se il file originale non esiste, sposta semplicemente il nuovo
+        mv "$NAMED_SCRIPT.pg" "$NAMED_SCRIPT"
+        chmod 755 "$NAMED_SCRIPT"
     fi
-    mv "$NAMED_SCRIPT.pg" "$NAMED_SCRIPT"
-    chmod 755 "$NAMED_SCRIPT"
 fi
 
 # DDNS hotplug
