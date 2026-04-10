@@ -188,7 +188,7 @@ jobs:
           #echo "📂 Contenuto di: "${{ env.REPO_DIR }}
           #ls -R || true
           
-        # =========================
+          # =========================
           # 🔥 FIRMWARE
           # =========================
           # Cerchiamo in modo ricorsivo qualsiasi file che finisca per sysupgrade.bin
