@@ -291,11 +291,19 @@ jobs:
                 gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
                 gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
               done
-
+      
       - name: Deploy to GitHub Pages
         run: |
           mkdir -p public/${{ env.BUILD_TYPE }}
-          cp -r ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}
+          cp -r ${{ env.REPO_DIR }}/release/packages/* public/snapshot
+          
+          # Genera un file index.html semplice con l'elenco dei file
+          cd public/snapshot
+          echo "<html><body><h1>OpenWrt Snapshot Packages</h1><ul>" > index.html
+          for f in *; do
+            echo "<li><a href=\"$f\">$f</a></li>" >> index.html
+          done
+          echo "</ul></body></html>" >> index.html
       
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4
