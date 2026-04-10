@@ -133,6 +133,8 @@ jobs:
             PATCH_STATUS="missing"
           fi
 
+          echo "PATCH_STATUS=$PATCH_STATUS" >> $GITHUB_ENV
+
           mv -v builder_repo/files ${{ env.REPO_DIR }}/
           chmod -v 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt ${{ env.REPO_DIR }}/files/www/cgi-bin/github_*
 

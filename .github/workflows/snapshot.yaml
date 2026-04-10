@@ -13,6 +13,7 @@ env:
   REPO: pesa1234/openwrt
   CONFIG_FILE: mt6000.config
   REPO_DIR: snapshot
+  BUILD_TYPE: snapshot
 
 jobs:
 
@@ -264,7 +265,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: snapshot-${{ env.DATE }}-${{ env.SHORT }}
+          tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ env.SHORT }}
           name: SNAPSHOT ${{ env.DATE }}
           body: |
             Branch: ${{ needs.check.outputs.branch }}
@@ -283,7 +284,7 @@ jobs:
         run: |
           echo "🧹 Cleaning old releases..."
           gh api repos/${{ github.repository }}/releases \
-            | jq -r '.[] | select(.tag_name | startswith("snapshot-")) | "\(.id) \(.tag_name)"' \
+            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | "\(.id) \(.tag_name)"' \
             | tail -n +11 \
             | while read id tag; do
                 echo "Deleting release $tag"
@@ -293,8 +294,8 @@ jobs:
 
       - name: Deploy to GitHub Pages
         run: |
-          mkdir -p public/snapshot
-          cp -r ${{ env.REPO_DIR }}/release/packages/* public/snapshot
+          mkdir -p public/${{ env.BUILD_TYPE }}
+          cp -r ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}
       
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4
