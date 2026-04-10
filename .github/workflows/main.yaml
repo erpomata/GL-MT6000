@@ -306,15 +306,22 @@ jobs:
       - name: Deploy to GitHub Pages
         run: |
           mkdir -p public/${{ env.BUILD_TYPE }}
-          cp -r ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}
-          
+
+          # 1. Copia i file di indice (cerca sia con p minuscola che maiuscola per sicurezza)
+          # -iname "packages*" troverà packages.adb, Packages.adb, packages.gz, ecc.
+          find ${{ env.REPO_DIR }}/bin -iname "packages*" -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+
+          # 2. Copia i pacchetti reali (apk o ipk)
+          find ${{ env.REPO_DIR }}/bin -name "*.apk" -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+          find ${{ env.REPO_DIR }}/bin -name "*.ipk" -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+
+          # 3. Genera l'index.html per vedere i file nel browser
           cd public/${{ env.BUILD_TYPE }}
-          # Usiamo BUILD_TYPE nel titolo per coerenza
           echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
-          echo "<h1>OpenWrt ${{ env.BUILD_TYPE }} Packages</h1><hr><ul>" >> index.html
+          echo "<h1>OpenWrt Packages - ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> index.html
           
-          # Elenca i file escludendo index.html stesso
-          for f in $(ls | grep -v "index.html"); do
+          # Generiamo la lista file in modo pulito
+          ls -1 | grep -v "index.html" | while read f; do
             echo "<li><a href=\"$f\">$f</a></li>" >> index.html
           done
           
