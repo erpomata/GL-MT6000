@@ -26,6 +26,12 @@ jobs:
       build: ${{ steps.detect.outputs.build }}
 
     steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache jq # aggiungi ccache qui
+          sudo apt autoremove -y && sudo apt clean -y
+
       - name: Detect latest branch
         id: detect
         run: |
@@ -107,7 +113,6 @@ jobs:
       # ⚙️ applica configurazione personalizzata
       - name: Apply config
         run: |
-          # ls -R || true
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
           cp .github/workflows/snapshot.yaml ${{ env.REPO_DIR }}/
 
@@ -197,16 +202,22 @@ jobs:
           # =========================
           # 🔥 FIRMWARE
           # =========================
-          FILES=$(ls bin/*/targets/*/*/*sysupgrade.bin 2>/dev/null || true)
+          # Cerchiamo in modo ricorsivo qualsiasi file che finisca per sysupgrade.bin
+          FILES=$(find bin/targets -name "*sysupgrade.bin" 2>/dev/null)
+          
           if [ -z "$FILES" ]; then
             echo "❌ Nessun firmware sysupgrade trovato!"
-            echo "📂 Debug struttura:"
-            #ls -R bin || true
+            echo "📂 Debug struttura attuale:"
+            find bin/targets -maxdepth 4
             exit 1
           else
             echo "✅ Firmware trovato:"
             echo "$FILES"
-            cp -r bin/*/targets/*/* release/firmware/
+            # Copiamo mantenendo la struttura o solo i file
+            find bin/targets -name "*sysupgrade.bin" -exec cp {} release/firmware/ \;
+            # Copiamo anche i file di log/info se presenti nella stessa cartella
+            TARGET_DIR=$(dirname $(echo "$FILES" | head -n1))
+            cp -r $TARGET_DIR/* release/firmware/ 2>/dev/null || true
           fi
           
           # =========================
@@ -236,6 +247,10 @@ jobs:
           
           echo "DATE=$DATE" >> $GITHUB_ENV
           echo "SHORT=$SHORT" >> $GITHUB_ENV
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: failure()
 
       # 📧 invio email in caso di successo
       - name: Send email

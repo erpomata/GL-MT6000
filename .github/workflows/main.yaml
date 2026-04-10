@@ -13,6 +13,7 @@ env:
   REPO: pesa1234/openwrt
   CONFIG_FILE: mt6000.config
   REPO_DIR: openwrt
+  BUILD_TYPE: openwrt
 
 jobs:
 
@@ -25,6 +26,12 @@ jobs:
       build: ${{ steps.detect.outputs.build }}
 
     steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache jq # aggiungi ccache qui
+          sudo apt autoremove -y && sudo apt clean -y
+
       - name: Detect latest branch
         id: detect
         run: |
@@ -62,17 +69,6 @@ jobs:
       # 📥 checkout del repo con la config
       - uses: actions/checkout@v4
 
-      # ⚡ cache per velocizzare le build successive
-      - name: Cache OpenWrt
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.REPO_DIR }}/dl
-            ${{ env.REPO_DIR }}/staging_dir
-          key: openwrt-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
-          restore-keys: |
-            openwrt-${{ needs.check.outputs.branch }}
-
       # 🔧 installa dipendenze
       - name: Install deps
         run: |
@@ -82,12 +78,22 @@ jobs:
           zlib1g-dev file wget curl ccache jq
 
       # 📦 clona repo pesa con branch automatico
-      - name: Clone OpenWrt
+      - name: Clone OpenWrt ${{ env.REPO_DIR }}
         run: |
           rm -rf ${{ env.REPO_DIR }}
           git clone https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
           cd ${{ env.REPO_DIR }}
           git checkout ${{ needs.check.outputs.branch }}
+
+      # ⚡ cache per velocizzare le build successive
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.REPO_DIR }}/.ccache
+          # La chiave include il branch e il commit della config per invalidarla se necessario
+          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
+          restore-keys: |
+            ccache-${{ needs.check.outputs.branch }}-
 
       # 📦 aggiorna feeds
       - name: Update feeds
@@ -270,7 +276,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: main-${{ env.DATE }}-${{ env.SHORT }}
+          tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ env.SHORT }}
           name: STABLE ${{ env.DATE }}
           body: |
             Branch: ${{ needs.check.outputs.branch }}
@@ -289,18 +295,26 @@ jobs:
         run: |
           echo "🧹 Cleaning old releases..."
           gh api repos/${{ github.repository }}/releases \
-            | jq -r '.[] | select(.tag_name | startswith("main-")) | "\(.id) \(.tag_name)"' \
+            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | "\(.id) \(.tag_name)"' \
             | tail -n +11 \
             | while read id tag; do
                 echo "Deleting release $tag"
                 gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
                 gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
               done
-
+      
       - name: Deploy to GitHub Pages
         run: |
-          mkdir -p public/main
-          cp -r ${{ env.REPO_DIR }}/release/packages/* public/main
+          mkdir -p public/${{ env.BUILD_TYPE }}
+          cp -r ${{ env.REPO_DIR }}/release/packages/* public/snapshot
+          
+          # Genera un file index.html semplice con l'elenco dei file
+          cd public/snapshot
+          echo "<html><body><h1>OpenWrt Snapshot Packages</h1><ul>" > index.html
+          for f in *; do
+            echo "<li><a href=\"$f\">$f</a></li>" >> index.html
+          done
+          echo "</ul></body></html>" >> index.html
       
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4
