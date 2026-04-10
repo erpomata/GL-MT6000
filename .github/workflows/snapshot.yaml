@@ -66,17 +66,6 @@ jobs:
       # 📥 checkout del repo con la config
       - uses: actions/checkout@v4
 
-      # ⚡ cache per velocizzare le build successive
-      - name: Cache OpenWrt
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.REPO_DIR }}/dl
-            ${{ env.REPO_DIR }}/staging_dir
-          key: openwrt-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
-          restore-keys: |
-            openwrt-${{ needs.check.outputs.branch }}
-
       # 🔧 installa dipendenze
       - name: Install deps
         run: |
@@ -92,6 +81,16 @@ jobs:
           git clone https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
           cd ${{ env.REPO_DIR }}
           git checkout ${{ needs.check.outputs.branch }}
+
+      # ⚡ cache per velocizzare le build successive
+      - name: Cache OpenWrt
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.REPO_DIR }}/.ccache
+          # La chiave include il branch e il commit della config per invalidarla se necessario
+          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
+          restore-keys: |
+            ccache-${{ needs.check.outputs.branch }}-
 
       # 📦 aggiorna feeds
       - name: Update feeds
