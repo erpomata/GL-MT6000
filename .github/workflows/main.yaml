@@ -67,7 +67,7 @@ jobs:
 
     steps:
       # 📥 checkout del repo con la config
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # 🔧 installa dipendenze
       - name: Install deps
@@ -87,7 +87,7 @@ jobs:
 
       # ⚡ cache per velocizzare le build successive
       - name: Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.4
         with:
           path: ${{ env.REPO_DIR }}/.ccache
           # La chiave include il branch e il commit della config per invalidarla se necessario
@@ -252,7 +252,7 @@ jobs:
       # 📧 invio email in caso di successo
       - name: Send email
         if: success()
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v16
         with:
           server_address: smtp.gmail.com
           server_port: 465
@@ -274,7 +274,7 @@ jobs:
 
       # 🚀 pubblica release
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.6.1
         with:
           tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ env.SHORT }}
           name: STABLE ${{ env.DATE }}
