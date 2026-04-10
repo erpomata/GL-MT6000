@@ -237,6 +237,10 @@ jobs:
           echo "DATE=$DATE" >> $GITHUB_ENV
           echo "SHORT=$SHORT" >> $GITHUB_ENV
 
+      - name: Setup tmate session
+          uses: mxschmitt/action-tmate@v3
+          if: failure()
+
       # 📧 invio email in caso di successo
       - name: Send email
         if: success()
