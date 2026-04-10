@@ -91,7 +91,6 @@ jobs:
         with:
           path: ${{ env.REPO_DIR }}/.ccache
           # La chiave include il branch e il commit della config per invalidarla se necessario
-          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
 
@@ -102,7 +101,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Checkout current repository
+      - name: Checkout mio repository
         uses: actions/checkout@v6.0.2
         with:
          path: "builder_repo"
@@ -249,29 +248,6 @@ jobs:
         uses: mxschmitt/action-tmate@v3
         if: failure()
 
-      # 📧 invio email in caso di successo
-      - name: Send email
-        if: success()
-        uses: dawidd6/action-send-mail@v16
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.MAIL_USER }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: OpenWrt MAIN Build SUCCESS
-          body: |
-            ✅ Build completata
-
-            🔗 Release:
-            ${{ github.server_url }}/${{ github.repository }}/releases
-
-            🔗 Run:
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            
-            ⚠️ Patch status: ${{ env.PATCH_STATUS }}
-          to: ${{ secrets.MAIL_USER }}
-          from: OpenWrt CI <${{ secrets.MAIL_USER }}>
-
       # 🚀 pubblica release
       - name: Publish release
         uses: softprops/action-gh-release@v2.6.1
@@ -333,3 +309,26 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           keep_files: true
+
+      # 📧 invio email in caso di successo
+      - name: Send email
+        if: success()
+        uses: dawidd6/action-send-mail@v16
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USER }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: OpenWrt MAIN Build SUCCESS
+          body: |
+            ✅ Build completata
+
+            🔗 Release:
+            ${{ github.server_url }}/${{ github.repository }}/releases
+
+            🔗 Run:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            ⚠️ Patch status: ${{ env.PATCH_STATUS }}
+          to: ${{ secrets.MAIL_USER }}
+          from: OpenWrt CI <${{ secrets.MAIL_USER }}>
