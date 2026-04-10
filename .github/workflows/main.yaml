@@ -306,15 +306,19 @@ jobs:
       - name: Deploy to GitHub Pages
         run: |
           mkdir -p public/${{ env.BUILD_TYPE }}
-          cp -r ${{ env.REPO_DIR }}/release/packages/* public/snapshot
+          cp -r ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}
           
-          # Genera un file index.html semplice con l'elenco dei file
-          cd public/snapshot
-          echo "<html><body><h1>OpenWrt Snapshot Packages</h1><ul>" > index.html
-          for f in *; do
+          cd public/${{ env.BUILD_TYPE }}
+          # Usiamo BUILD_TYPE nel titolo per coerenza
+          echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
+          echo "<h1>OpenWrt ${{ env.BUILD_TYPE }} Packages</h1><hr><ul>" >> index.html
+          
+          # Elenca i file escludendo index.html stesso
+          for f in $(ls | grep -v "index.html"); do
             echo "<li><a href=\"$f\">$f</a></li>" >> index.html
           done
-          echo "</ul></body></html>" >> index.html
+          
+          echo "</ul><hr><p>Generated on $(date)</p></body></html>" >> index.html
       
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4
