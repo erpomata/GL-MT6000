@@ -332,7 +332,7 @@ jobs:
           server_port: 465
           username: ${{ secrets.MAIL_USER }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: OpenWrt MAIN Build SUCCESS
+          subject: OpenWrt ${{ env.BUILD_TYPE }} Build SUCCESS
           body: |
             ✅ Build completata
 
