@@ -90,9 +90,12 @@ jobs:
         uses: actions/cache@v5.0.4
         with:
           path: ${{ env.REPO_DIR }}/.ccache
-          # La chiave include il branch e il commit della config per invalidarla se necessario
+          # La chiave principale: se questo file non cambia, GitHub scarica la cache esistente
+          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles('mt6000.config') }}
+          # Se non trova la chiave sopra, cerca la cache più recente dello stesso branch
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
+            
 
       # 📦 aggiorna feeds
       - name: Update feeds
