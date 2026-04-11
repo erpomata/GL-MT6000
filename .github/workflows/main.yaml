@@ -12,8 +12,8 @@ on:
 env:
   REPO: pesa1234/openwrt
   CONFIG_FILE: mt6000.config
-  REPO_DIR: openwrt
-  BUILD_TYPE: openwrt
+  REPO_DIR: main
+  BUILD_TYPE: main
 
 jobs:
 
@@ -90,12 +90,10 @@ jobs:
         uses: actions/cache@v5.0.4
         with:
           path: ${{ env.REPO_DIR }}/.ccache
-          # La chiave principale: se questo file non cambia, GitHub scarica la cache esistente
-          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles('mt6000.config') }}
-          # Se non trova la chiave sopra, cerca la cache più recente dello stesso branch
+          # La chiave include il branch e il commit della config per invalidarla se necessario
+          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
-            
 
       # 📦 aggiorna feeds
       - name: Update feeds
@@ -275,7 +273,7 @@ jobs:
             ${{ env.REPO_DIR }}/release/firmware/**
             ${{ env.REPO_DIR }}/release/packages.tar.gz
             ${{ env.REPO_DIR }}/mt6000.config
-            ${{ env.REPO_DIR }}/snapshot.yaml   # se l'hai copiato
+            ${{ env.REPO_DIR }}/main.yaml   # se l'hai copiato
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -307,6 +305,7 @@ jobs:
 
           # 3. Genera l'index.html per vedere i file nel browser
           cd public/${{ env.BUILD_TYPE }}
+          # Usiamo BUILD_TYPE nel titolo per coerenza
           echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
           echo "<h1>OpenWrt Packages - ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> index.html
           
