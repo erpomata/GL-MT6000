@@ -70,7 +70,7 @@ jobs:
 
     steps:
       # 📥 checkout del repo con la config
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # 🔧 installa dipendenze
       - name: Install deps
@@ -90,7 +90,7 @@ jobs:
 
       # ⚡ cache per velocizzare le build successive
       - name: Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.4
         with:
           path: ${{ env.REPO_DIR }}/.ccache
           # La chiave include il branch e il commit della config per invalidarla se necessario
@@ -105,7 +105,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Checkout current repository
+      - name: Checkout mio repository
         uses: actions/checkout@v6.0.2
         with:
          path: "builder_repo"
@@ -148,6 +148,17 @@ jobs:
           chmod -v 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt ${{ env.REPO_DIR }}/files/www/cgi-bin/github_*
 
           cd ${{ env.REPO_DIR }}
+
+          # Rimuove definizioni esistenti per evitare duplicati
+          sed -i '/CONFIG_VERSION_NUMBER/d' .config
+          sed -i '/CONFIG_VERSION_CODE/d' .config
+          
+          # Usa la variabile BUILD_TYPE definita in cima al file
+          echo 'CONFIG_VERSION_NUMBER="${{ env.BUILD_TYPE }}"' >> .config
+          
+          # Aggiunge la data per rendere il file unico (es. snapshot-2026-04-10)
+          echo "CONFIG_VERSION_CODE=\"$(date +%Y-%m-%d)\"" >> .config
+
           make defconfig
 
       # 🚫 rimuove pacchetti problematici
@@ -252,32 +263,9 @@ jobs:
         uses: mxschmitt/action-tmate@v3
         if: failure()
 
-      # 📧 invio email in caso di successo
-      - name: Send email
-        if: success()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.MAIL_USER }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: OpenWrt SNAPSHOT Build SUCCESS
-          body: |
-            ✅ Build completata
-
-            🔗 Release:
-            ${{ github.server_url }}/${{ github.repository }}/releases
-
-            🔗 Run:
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            
-            ⚠️ Patch status: ${{ env.PATCH_STATUS }}
-          to: ${{ secrets.MAIL_USER }}
-          from: OpenWrt CI <${{ secrets.MAIL_USER }}>
-
       # 🚀 pubblica release
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.6.1
         with:
           tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ env.SHORT }}
           name: SNAPSHOT ${{ env.DATE }}
@@ -309,15 +297,23 @@ jobs:
       - name: Deploy to GitHub Pages
         run: |
           mkdir -p public/${{ env.BUILD_TYPE }}
-          cp -r ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}
-          
+
+          # 1. Copia i file di indice (cerca sia con p minuscola che maiuscola per sicurezza)
+          # -iname "packages*" troverà packages.adb, Packages.adb, packages.gz, ecc.
+          find ${{ env.REPO_DIR }}/bin -iname "packages*" -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+
+          # 2. Copia i pacchetti reali (apk o ipk)
+          find ${{ env.REPO_DIR }}/bin -name "*.apk" -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+          find ${{ env.REPO_DIR }}/bin -name "*.ipk" -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+
+          # 3. Genera l'index.html per vedere i file nel browser
           cd public/${{ env.BUILD_TYPE }}
           # Usiamo BUILD_TYPE nel titolo per coerenza
           echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
-          echo "<h1>OpenWrt ${{ env.BUILD_TYPE }} Packages</h1><hr><ul>" >> index.html
+          echo "<h1>OpenWrt Packages - ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> index.html
           
-          # Elenca i file escludendo index.html stesso
-          for f in $(ls | grep -v "index.html"); do
+          # Generiamo la lista file in modo pulito
+          ls -1 | grep -v "index.html" | while read f; do
             echo "<li><a href=\"$f\">$f</a></li>" >> index.html
           done
           
@@ -329,3 +325,26 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           keep_files: true
+
+      # 📧 invio email in caso di successo
+      - name: Send email
+        if: success()
+        uses: dawidd6/action-send-mail@v16
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USER }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: OpenWrt MAIN Build SUCCESS
+          body: |
+            ✅ Build completata
+
+            🔗 Release:
+            ${{ github.server_url }}/${{ github.repository }}/releases
+
+            🔗 Run:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            ⚠️ Patch status: ${{ env.PATCH_STATUS }}
+          to: ${{ secrets.MAIL_USER }}
+          from: OpenWrt CI <${{ secrets.MAIL_USER }}>
