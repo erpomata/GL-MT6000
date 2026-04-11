@@ -260,10 +260,6 @@ jobs:
           echo "DATE=$DATE" >> $GITHUB_ENV
           echo "SHORT=$SHORT" >> $GITHUB_ENV
 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-        if: failure()
-
       # 🚀 pubblica release
       - name: Publish release
         uses: softprops/action-gh-release@v2.6.1
@@ -349,3 +345,7 @@ jobs:
             ⚠️ Patch status: ${{ env.PATCH_STATUS }}
           to: ${{ secrets.MAIL_USER }}
           from: OpenWrt CI <${{ secrets.MAIL_USER }}>
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: failure()
