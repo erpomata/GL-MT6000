@@ -211,18 +211,18 @@ jobs:
           # 🔥 FIRMWARE
           # =========================
           # Cerchiamo in modo ricorsivo qualsiasi file che finisca per sysupgrade.bin
-          FILES=$(find bin/targets -name "*sysupgrade.bin" 2>/dev/null)
+          FILES=$(find . -name "*sysupgrade.bin" 2>/dev/null)
           
           if [ -z "$FILES" ]; then
             echo "❌ Nessun firmware sysupgrade trovato!"
             echo "📂 Debug struttura attuale:"
-            find bin/targets -maxdepth 4
+            find . -maxdepth 4
             exit 1
           else
             echo "✅ Firmware trovato:"
             echo "$FILES"
             # Copiamo mantenendo la struttura o solo i file
-            find bin/targets -name "*sysupgrade.bin" -exec cp {} release/firmware/ \;
+            find . -name "*sysupgrade.bin" -exec cp {} release/firmware/ \;
             # Copiamo anche i file di log/info se presenti nella stessa cartella
             TARGET_DIR=$(dirname $(echo "$FILES" | head -n1))
             cp -r $TARGET_DIR/* release/firmware/ 2>/dev/null || true
@@ -231,12 +231,13 @@ jobs:
           # =========================
           # 📦 PACKAGES
           # =========================
-          PKG_PATH=$(find bin -type d -path "*/packages/*" | head -n1)
+          PKG_PATH=$(find . -type d -path "*/packages/*" | head -n1)
           if [ -z "$PKG_PATH" ]; then
             echo "❌ Nessun pacchetto trovato!"
             ls -R bin || true
             exit 1
           fi
+
           
           echo "📦 Copio pacchetti da: $PKG_PATH"
           cp -r $PKG_PATH/* release/packages/
@@ -255,10 +256,6 @@ jobs:
           
           echo "DATE=$DATE" >> $GITHUB_ENV
           echo "SHORT=$SHORT" >> $GITHUB_ENV
-
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-        if: failure()
 
       # 🚀 pubblica release
       - name: Publish release
@@ -332,7 +329,7 @@ jobs:
           server_port: 465
           username: ${{ secrets.MAIL_USER }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: OpenWrt MAIN Build SUCCESS
+          subject: OpenWrt ${{ env.BUILD_TYPE }} Build SUCCESS
           body: |
             ✅ Build completata
 
@@ -345,3 +342,7 @@ jobs:
             ⚠️ Patch status: ${{ env.PATCH_STATUS }}
           to: ${{ secrets.MAIL_USER }}
           from: OpenWrt CI <${{ secrets.MAIL_USER }}>
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: failure()
