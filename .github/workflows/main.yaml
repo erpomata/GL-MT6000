@@ -111,7 +111,7 @@ jobs:
       - name: Apply config
         run: |
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
-          cp .github/workflows/snapshot.yaml ${{ env.REPO_DIR }}/
+          cp .github/workflows/mail.yaml ${{ env.REPO_DIR }}/
 
           # inizializza variabile
           PATCH_STATUS="applied"

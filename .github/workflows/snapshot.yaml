@@ -165,7 +165,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ needs.check.outputs.commit }}
-          name: ${{ env.BUILD_TYPE | uppercase }} - ${{ env.DATE }}
+          name: SNAPSHOT - ${{ env.DATE }}
           body: |
             ### OpenWrt Build Info
             - **Branch:** `${{ needs.check.outputs.branch }}`
