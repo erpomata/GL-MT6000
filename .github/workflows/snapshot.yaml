@@ -19,7 +19,7 @@ env:
 jobs:
   # 🔍 JOB 1: Controlla se ci sono nuovi commit nel repo remoto
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     outputs:
       branch: ${{ steps.detect.outputs.branch }}
       commit: ${{ steps.detect.outputs.commit }}
@@ -59,7 +59,7 @@ jobs:
   # 🏗️ JOB 2: Compilazione
   build:
     needs: check
-    if: needs.check.outputs.build == 'true' 
+    if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm # Sfrutta la potenza dei runner ARM se disponibili
 
     steps:
