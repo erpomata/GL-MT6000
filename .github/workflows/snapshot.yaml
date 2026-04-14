@@ -46,7 +46,7 @@ jobs:
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
 
           # 📦 Controlla se lo SHA è già menzionato nell'ultima release del TUO repo
-          LAST_BODY=$(gh api repos/${{ github.repository }}/releases/latest --jq .body 2>/dev/null || echo "")
+          LAST_BODY=$(gh api repos/${{ github.repository }}/releases --jq ". | map(select(.tag_name | test(\"${{ env.BUILD_TYPE }}\"; \"i\"))) | .[0].body" 2>/dev/null || echo "")
 
           if echo "$LAST_BODY" | grep -q "$COMMIT"; then
             echo "build=false" >> $GITHUB_OUTPUT
@@ -59,7 +59,7 @@ jobs:
   # 🏗️ JOB 2: Compilazione
   build:
     needs: check
-    if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.check.outputs.build == 'true' 
     runs-on: ubuntu-24.04-arm # Sfrutta la potenza dei runner ARM se disponibili
 
     steps:
