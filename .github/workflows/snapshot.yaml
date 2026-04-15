@@ -1,23 +1,19 @@
+---
 name: OpenWrt MT6000 SNAPSHOT
-
 permissions:
   contents: write
   actions: write
-
 on:
-  workflow_dispatch:
+  workflow_dispatch: null
   schedule:
-    - cron: "0 3 * * *"
-
+    - cron: 0 3 * * *
 env:
   REPO: pesa1234/openwrt
   CONFIG_FILE: mt6000.config
   REPO_DIR: snapshot
   BUILD_TYPE: snapshot
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # Rimuove i warning di Node.js 20
-
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
-  # 🔍 JOB 1: Controlla se ci sono nuovi commit nel repo remoto
   check:
     runs-on: ubuntu-24.04-arm
     outputs:
@@ -29,12 +25,15 @@ jobs:
         id: detect
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
+        run: >
           set -e
-          
+
+
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-          
+
+
           # 🔎 Trova l'ultimo branch next-* (escludendo test e beta)
+
           BRANCH=$(git ls-remote https://github.com/${{ env.REPO }}.git "refs/heads/next-*" \
             | sed -e 's|.*refs/heads/||' \
             | grep -viE 'test|beta' \
@@ -42,14 +41,21 @@ jobs:
 
           [ -z "$BRANCH" ] && BRANCH="main"
 
+
           # 🧠 Recupera lo SHA del commit
+
           COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git refs/heads/$BRANCH | awk '{print $1}')
 
+
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
 
+
           # 📦 Controlla se lo SHA è già menzionato nell'ultima release del TUO repo
+
           LAST_BODY=$(gh api repos/${{ github.repository }}/releases --jq ". | map(select(.tag_name | test(\"${{ env.BUILD_TYPE }}\"; \"i\"))) | .[0].body" 2>/dev/null || echo "")
+
 
           if echo "$LAST_BODY" | grep -q "$COMMIT"; then
             echo "build=false" >> $GITHUB_OUTPUT
@@ -58,106 +64,111 @@ jobs:
             echo "build=true" >> $GITHUB_OUTPUT
             echo "🚀 Nuovo commit rilevato: $COMMIT. Procedo alla build."
           fi
-
-  # 🏗️ JOB 2: Compilazione
   build:
     needs: check
-    if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04-arm # Sfrutta la potenza dei runner ARM se disponibili
-
+    if: needs.check.outputs.build == 'true' || github.event_name ==
+      'workflow_dispatch'
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v5
         with:
           path: builder_repo
           fetch-depth: 1
-
       - name: Install deps
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex g++ gawk \
           gettext git libncurses-dev libssl-dev python3-setuptools rsync \
           unzip zlib1g-dev file wget curl ccache jq swig
-
       - name: Clone OpenWrt
-        run: |
-          git clone --depth 1 -b ${{ needs.check.outputs.branch }} https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
-
+        run: >
+          git clone --depth 1 -b ${{ needs.check.outputs.branch }}
+          https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
       - name: Cache ccache
-        uses: actions/cache@v4 # v4 o v5 gestiscono bene Node 20/24
+        uses: actions/cache@v4
         with:
-            path: |
-              ${{ env.REPO_DIR }}/dl
-              ${{ env.REPO_DIR }}/feeds
-              ${{ env.REPO_DIR }}/staging_dir
-              ${{ env.REPO_DIR }}/.ccache
+          path: |
+            ${{ env.REPO_DIR }}/dl
+            ${{ env.REPO_DIR }}/feeds
+            ${{ env.REPO_DIR }}/staging_dir
+            ${{ env.REPO_DIR }}/.ccache
           key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
-
       - name: Update and Install feeds
         run: |
           cd ${{ env.REPO_DIR }}
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
       - name: Checkout Helper Repo (Patch & Files)
         uses: actions/checkout@v5
         with:
-          path: "builder_repo"
+          path: builder_repo
           fetch-depth: 1
-          
       - name: Apply Config and Versioning
-        run: |
+        run: >
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
-          
+
+
           # Patching dei file personali
+
           rm -rf builder_repo/.git builder_repo/.github
+
           for file in $(grep -rl "XXXXXX/YYYYYY" builder_repo/ || true); do
               sed -i "s|XXXXXX/YYYYYY|${{ github.repository }}|g" "$file"
           done
 
+
           # Applicazione Patch AttendedSysupgrade
+
           if [ -f builder_repo/attendedsysupgrade-with-GitHub.patch ]; then
               cd ${{ env.REPO_DIR }}
               patch -p1 < ../builder_repo/attendedsysupgrade-with-GitHub.patch || echo "Patch fallita o già applicata"
               cd ..
           fi
 
+
           # Spostamento Files
+
           [ -d builder_repo/files ] && mv builder_repo/files ${{ env.REPO_DIR }}/
+
           chmod 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt 2>/dev/null || true
+
           chmod 755 ${{ env.REPO_DIR }}/files/www/cgi-bin/github_* 2>/dev/null || true
 
-          # Forza il NOME del firmware usando BUILD_TYPE
-          cd ${{ env.REPO_DIR }}
-          sed -i '/CONFIG_VERSION_NUMBER/d' .config
-          sed -i '/CONFIG_VERSION_CODE/d' .config
-          echo 'CONFIG_VERSION_NUMBER="${{ env.BUILD_TYPE }}"' >> .config
-          echo "CONFIG_VERSION_CODE=\"$(date +%Y-%m-%d)\"" >> .config
-          
-          make defconfig
 
+          # Forza il NOME del firmware usando BUILD_TYPE
+
+          cd ${{ env.REPO_DIR }}
+
+          sed -i '/CONFIG_VERSION_NUMBER/d' .config
+
+          sed -i '/CONFIG_VERSION_CODE/d' .config
+
+          echo 'CONFIG_VERSION_NUMBER="${{ env.BUILD_TYPE }}"' >> .config
+
+          echo "CONFIG_VERSION_CODE=\"$(date +%Y-%m-%d)\"" >> .config
+
+
+          make defconfig
       - name: Build Toolchain
         run: |
           cd ${{ env.REPO_DIR }}
           make -j$(nproc) tools/install toolchain/install
-
       - name: Build Firmware
         run: |
           cd ${{ env.REPO_DIR }}
           make -j$(nproc) || make -j1 V=s
-
       - name: Generate Index and Repo
         run: |
           cd ${{ env.REPO_DIR }}
           make package/index
-
       - name: Prepare Release Artifacts
         run: |
           cd ${{ env.REPO_DIR }}
           mkdir -p release/firmware
           mkdir -p release/packages
-          
+
           # Firmware
           find . -name "*sysupgrade.bin" -exec cp {} release/firmware/ \;
           find . -name "*.buildinfo" -exec cp {} release/firmware/ \;
@@ -171,11 +182,11 @@ jobs:
           cd release
           tar -czf packages_archive.tar.gz packages/
           echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
-
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ needs.check.outputs.commit }}
+          tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ needs.check.outputs.commit
+            }}
           name: SNAPSHOT - ${{ env.DATE }}
           body: |
             ### OpenWrt Build Info
@@ -187,31 +198,36 @@ jobs:
             ${{ env.REPO_DIR }}/release/firmware/*
             ${{ env.REPO_DIR }}/release/packages_archive.tar.gz
             ${{ env.REPO_DIR }}/.config
-
       - name: Deploy to GitHub Pages
-        run: |
+        run: >
           mkdir -p public/${{ env.BUILD_TYPE }}
+
           # Copia tutto quello che abbiamo preparato in release/packages
+
           cp -rv ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}/
 
+
           # Genera Index HTML
+
           cd public/${{ env.BUILD_TYPE }}
+
           echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
+
           echo "<h1>OpenWrt Packages - ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> index.html
+
           ls -1 | grep -v "index.html" | while read f; do
             echo "<li><a href=\"$f\">$f</a></li>" >> index.html
           done
-          echo "</ul><hr><p>Generated on $(date)</p></body></html>" >> index.html
 
+          echo "</ul><hr><p>Generated on $(date)</p></body></html>" >> index.html
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           keep_files: true
-
       - name: Clean Old Releases
-        run: |
+        run: >
           gh api repos/${{ github.repository }}/releases \
             | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | "\(.id) \(.tag_name)"' \
             | tail -n +11 | while read id tag; do
@@ -220,7 +236,6 @@ jobs:
               done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
         if: failure()
