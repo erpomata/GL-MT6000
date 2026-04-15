@@ -162,6 +162,7 @@ jobs:
 
           cd release
           tar -czf packages_archive.tar.gz packages/
+          tar -czf firmware.tar.gz -C ${{ env.REPO_DIR }}/release firmware
           echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
 
       - name: Publish Release
@@ -176,7 +177,7 @@ jobs:
             - **Date:** ${{ env.DATE }}
             - **Type:** ${{ env.BUILD_TYPE }}
           files: |
-            ${{ env.REPO_DIR }}/release/firmware/*
+            ${{ env.REPO_DIR }}/release/firmware.tar.gz
             ${{ env.REPO_DIR }}/release/packages_archive.tar.gz
             ${{ env.REPO_DIR }}/.config
 
