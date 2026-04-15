@@ -144,26 +144,70 @@ jobs:
           cd ${{ env.REPO_DIR }}
           make package/index
 
-      - name: Prepare Release Artifacts
+          # 📦 prepara file release
+      - name: Prepare release
         run: |
           cd ${{ env.REPO_DIR }}
+ 
+          DATE=$(date +%Y-%m-%d)
+          COMMIT=${{ needs.check.outputs.commit }}
+          SHORT=${COMMIT:0:7}
+          
           mkdir -p release/firmware
           mkdir -p release/packages
           
-          # Firmware
-          find . -name "*sysupgrade.bin" -exec cp {} release/firmware/ \;
-          find . -name "*.buildinfo" -exec cp {} release/firmware/ \;
-          find . -name "*.json" -exec cp {} release/firmware/ \;
+          #echo "📂 Contenuto di: "${{ env.REPO_DIR }}
+          #ls -R || true
+          
+          # =========================
+          # 🔥 FIRMWARE
+          # =========================
+          # Cerchiamo in modo ricorsivo qualsiasi file che finisca per sysupgrade.bin
+          FILES=$(find . -name "*sysupgrade.bin" 2>/dev/null)
+          
+          if [ -z "$FILES" ]; then
+            echo "❌ Nessun firmware sysupgrade trovato!"
+            echo "📂 Debug struttura attuale:"
+            find . -maxdepth 4
+            exit 1
+          else
+            echo "✅ Firmware trovato:"
+            echo "$FILES"
+            # Copiamo mantenendo la struttura o solo i file
+            find . -name "*sysupgrade.bin" -exec cp {} release/firmware/ \;
+            # Copiamo anche i file di log/info se presenti nella stessa cartella
+            TARGET_DIR=$(dirname $(echo "$FILES" | head -n1))
+            cp -r $TARGET_DIR/* release/firmware/ 2>/dev/null || true
+          fi
+          
+          # =========================
+          # 📦 PACKAGES
+          # =========================
+          PKG_PATH=$(find . -type d -path "*/packages/*" | head -n1)
+          if [ -z "$PKG_PATH" ]; then
+            echo "❌ Nessun pacchetto trovato!"
+            ls -R bin || true
+            exit 1
+          fi
 
-          # Packages (Struttura piatta per Pages)
-          find . -name "*.apk" -exec cp {} release/packages/ \;
-          find . -name "*.ipk" -exec cp {} release/packages/ \;
-          find . -iname "packages*" -exec cp {} release/packages/ \;
-
+          
+          echo "📦 Copio pacchetti da: $PKG_PATH"
+          cp -r $PKG_PATH/* release/packages/
+          
+          # rigenera index opkg
+          cd release/packages
+          ../../scripts/ipkg-make-index.sh . > Packages
+          gzip -f Packages
+          cd ../..
+          
+          # =========================
+          # 📦 ARCHIVIO
+          # =========================
           cd release
-          tar -czf packages_archive.tar.gz packages/
-          tar -czf firmware.tar.gz -C ${{ env.REPO_DIR }}/release firmware
-          echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
+          tar -czf packages.tar.gz packages
+          
+          echo "DATE=$DATE" >> $GITHUB_ENV
+          echo "SHORT=$SHORT" >> $GITHUB_ENV
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
