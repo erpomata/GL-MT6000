@@ -252,7 +252,8 @@ jobs:
         run: |
           mkdir -p public/${{ env.BUILD_TYPE }}
           # Copia tutto quello che abbiamo preparato in release/packages
-          cp -rv ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}/
+          #cp -rv ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}/
+          find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
 
           # Genera Index HTML
           cd public/${{ env.BUILD_TYPE }}
