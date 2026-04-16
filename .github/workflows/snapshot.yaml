@@ -152,7 +152,7 @@ jobs:
           DATE=$(date +%Y-%m-%d)
           COMMIT=${{ needs.check.outputs.commit }}
           SHORT=${COMMIT:0:7}
-          SOURCE_DIR=bin/targets
+          SOURCE_DIR=bin
           
           mkdir -p release/firmware
           mkdir -p release/packages
@@ -164,40 +164,55 @@ jobs:
           # =========================
           # 🔥 FIRMWARE (solo bin/targets)
           # =========================
-          FW_DIR=$(find bin/targets -type f -name "*sysupgrade.bin" -print -quit)
 
-          if [ -z "$FW_DIR" ]; then
-            echo "❌ Nessun firmware sysupgrade trovato in bin/targets!"
-            find bin/targets -maxdepth 4 || true
+          TARGETS_DIR=$(find "$SOURCE_DIR" -type d -name targets | head -n1)
+         
+          if [ -z "$TARGETS_DIR" ]; then
+            echo "❌ Directory targets non trovata sotto $SOURCE_DIR"
+            find "$SOURCE_DIR" -maxdepth 3 || true
             exit 1
           fi
-    
+         
+          echo "📂 Uso TARGETS_DIR=$TARGETS_DIR"
+         
+          FW_FILES=$(find "$TARGETS_DIR" -type f -name "*sysupgrade.bin")
+         
+          if [ -z "$FW_FILES" ]; then
+            echo "❌ Nessun firmware sysupgrade trovato!"
+            find "$TARGETS_DIR" -maxdepth 4 || true
+            exit 1
+          fi
+         
           echo "✅ Firmware trovato:"
-          echo "$FW_DIR"
-    
-          # Copia solo i sysupgrade.bin
-          find bin/targets -type f -name "*sysupgrade.bin" \
-            -exec cp {} release/firmware/ \;
-    
-          # Copia anche checksum e manifest (opzionale ma utilissimo)
-          find bin/targets -type f \( -name "*.sha256*" -o -name "*.manifest" \) \
+          echo "$FW_FILES"
+         
+          # Copia firmware
+          echo "$FW_FILES" | while read -r fw; do
+            cp "$fw" release/firmware/
+          done
+         
+          # Copia checksum / manifest (se presenti)
+          find "$TARGETS_DIR" -type f \( -name "*.sha256*" -o -name "*.manifest" \) \
             -exec cp {} release/firmware/ \; 2>/dev/null || true
+
 
           
 
           # =========================
           # 📦 PACKAGES (solo bin/packages)
           # =========================
-          PKG_PATH=$(find bin/packages -mindepth 1 -maxdepth 1 -type d | head -n1)
+
+          PKG_DIR=$(find "$SOURCE_DIR" -type d -path "*/packages/*" | head -n1)
           
-          if [ -z "$PKG_PATH" ]; then
-            echo "❌ Nessun pacchetto trovato in bin/packages!"
-            find bin/packages || true
+          if [ -z "$PKG_DIR" ]; then
+            echo "❌ Directory packages non trovata sotto $SOURCE_DIR"
+            find "$SOURCE_DIR" -maxdepth 3 || true
             exit 1
           fi
           
-          echo "📦 Copio pacchetti da: $PKG_PATH"
-          cp -r "$PKG_PATH"/* release/packages/
+          echo "📦 Copio pacchetti da: $PKG_DIR"
+          cp -r "$PKG_DIR"/* release/packages/
+
 
           
           # rigenera index opkg
