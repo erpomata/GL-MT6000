@@ -38,9 +38,9 @@ jobs:
             | sort -V | tail -n1)
 
           if [ -z "$BRANCH" ]; then
-	    echo "Errore critico: BRANCH non impostato."
-	    exit 1
-	  fi
+            echo "Errore critico: BRANCH non impostato."
+            exit 1
+          fi
 
           # 🧠 Recupera lo SHA del commit
           COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git refs/heads/$BRANCH | awk '{print $1}')
@@ -107,7 +107,7 @@ jobs:
       - name: Apply Config and Versioning
         run: |
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
-	  cp .github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
+          cp .github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
 
           # inizializza variabile
           PATCH_STATUS="applied"
