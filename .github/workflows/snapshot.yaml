@@ -230,7 +230,6 @@ jobs:
           echo "DATE=$DATE" >> $GITHUB_ENV
           echo "SHORT=$SHORT" >> $GITHUB_ENV
 
-
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
@@ -243,9 +242,10 @@ jobs:
             - **Date:** ${{ env.DATE }}
             - **Type:** ${{ env.BUILD_TYPE }}
           files: |
-            release/firmware/*
-            release/packages.tar.gz
-            .config
+            snapshot/release/firmware/*
+            snapshot/release/packages.tar.gz
+            snapshot/.config
+      
 
 
       - name: Deploy to GitHub Pages
