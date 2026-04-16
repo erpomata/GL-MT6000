@@ -258,6 +258,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 📧 invio email in caso di successo
+      - name: Send email
+        if: success()
+        uses: dawidd6/action-send-mail@v16
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USER }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: OpenWrt ${{ env.BUILD_TYPE }} Build SUCCESS
+          body: |
+            ✅ Build completata
+
+            🔗 Release:
+            ${{ github.server_url }}/${{ github.repository }}/releases
+
+            🔗 Run:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            ⚠️ Patch status: ${{ env.PATCH_STATUS }}
+          to: ${{ secrets.MAIL_USER }}
+          from: OpenWrt CI <${{ secrets.MAIL_USER }}>
+
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
         if: failure()
