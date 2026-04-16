@@ -260,6 +260,7 @@ jobs:
             ${{ env.REPO_DIR }}/release/firmware/*
             ${{ env.REPO_DIR }}/release/packages.tar.gz
             ${{ env.REPO_DIR }}/.config
+            ${{ env.REPO_DIR }}/${{ env.BUILD_TYPE }}.yaml
           env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
