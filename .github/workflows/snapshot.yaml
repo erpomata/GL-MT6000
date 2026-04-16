@@ -175,7 +175,8 @@ jobs:
          
           echo "📂 Uso TARGETS_DIR=$TARGETS_DIR"
          
-          FW_FILES=$(find "$TARGETS_DIR" -type f -name "*sysupgrade.bin")
+          #FW_FILES=$(find "$TARGETS_DIR" -type f -name "*sysupgrade.bin")
+          FW_FILES=$(find "$TARGETS_DIR" -type f \( -name "*.bin" -o -name "*.fip" \))
          
           if [ -z "$FW_FILES" ]; then
             echo "❌ Nessun firmware sysupgrade trovato!"
@@ -194,9 +195,6 @@ jobs:
           # Copia checksum / manifest (se presenti)
           find "$TARGETS_DIR" -type f \( -name "*.sha256*" -o -name "*.manifest" \) \
             -exec cp {} release/firmware/ \; 2>/dev/null || true
-
-
-          
 
           # =========================
           # 📦 PACKAGES (solo bin/packages)
