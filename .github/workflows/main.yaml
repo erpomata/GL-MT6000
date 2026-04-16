@@ -5,66 +5,57 @@ permissions:
   actions: write
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: null
   schedule:
-    - cron: "0 0 * * 0"   # ogni domenica a mezzanotte (tra sabato e domenica)
+    - cron: "0 0 * * *"  
 
 env:
   REPO: pesa1234/openwrt
   CONFIG_FILE: mt6000.config
   REPO_DIR: main
   BUILD_TYPE: main
-
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
-
-  # 🔍 JOB 1: controlla se ci sono nuovi commit
+  # 🔍 JOB 1: Controlla se ci sono nuovi commit nel repo remoto
   check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04-arm
     outputs:
       branch: ${{ steps.detect.outputs.branch }}
       commit: ${{ steps.detect.outputs.commit }}
       build: ${{ steps.detect.outputs.build }}
-
     steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ccache jq # aggiungi ccache qui
-          sudo apt autoremove -y && sudo apt clean -y
-
-      - name: Detect latest branch
+      - name: Detect latest branch and commit
         id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
 
-          # 🔎 Trova ultimo branch next-*
           BRANCH="main"
 
-          # fallback su main se non trovato
-          [ -z "$BRANCH" ] && BRANCH="main"
-
-          # 🧠 recupera commit SHA
+          # 🧠 Recupera lo SHA del commit
           COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git refs/heads/$BRANCH | awk '{print $1}')
 
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
 
-          # 📦 controlla ultima release
-          LAST=$(gh api repos/${{ github.repository }}/releases/latest --jq .body 2>/dev/null || echo "")
+          # 📦 Controlla se lo SHA è già menzionato nell'ultima release del TUO repo
+          LAST_BODY=$(gh api repos/${{ github.repository }}/releases --jq ". | map(select(.tag_name | test(\"${{ env.BUILD_TYPE }}\"; \"i\"))) | .[0].body" 2>/dev/null || echo "")
 
-          # 🔁 decide se buildare
-          if echo "$LAST" | grep -q "$COMMIT"; then
+          if echo "$LAST_BODY" | grep -q "$COMMIT"; then
             echo "build=false" >> $GITHUB_OUTPUT
+            echo "✅ Nessun nuovo commit. Build saltata."
           else
             echo "build=true" >> $GITHUB_OUTPUT
+            echo "🚀 Nuovo commit rilevato: $COMMIT. Procedo alla build."
           fi
 
-  # 🏗️ JOB 2: build vera e propria
+  # 🏗️ JOB 2: Compilazione
   build:
     needs: check
     if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-24.04-arm
     steps:
       # 📥 checkout del repo con la config
       - uses: actions/checkout@v5

@@ -37,7 +37,10 @@ jobs:
             | grep -viE 'test|beta' \
             | sort -V | tail -n1)
 
-          [ -z "$BRANCH" ] && BRANCH="main"
+          if [ -z "$BRANCH" ]; then
+	    echo "Errore critico: BRANCH non impostato."
+	    exit 1
+	  fi
 
           # 🧠 Recupera lo SHA del commit
           COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git refs/heads/$BRANCH | awk '{print $1}')
@@ -62,8 +65,10 @@ jobs:
     if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     steps:
+      # 📥 checkout del repo con la config
       - uses: actions/checkout@v5
 
+      # 🔧 installa dipendenze
       - name: Install deps
         run: |
           sudo apt update
@@ -71,7 +76,8 @@ jobs:
           gettext git libncurses-dev libssl-dev python3-setuptools rsync \
           unzip zlib1g-dev file wget curl ccache jq swig
 
-      - name: Clone OpenWrt
+      # 📦 clona repo pesa con branch automatico
+      - name: Clone OpenWrt ${{ env.REPO_DIR }}
         run: |
           git clone --depth 1 -b ${{ needs.check.outputs.branch }} https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
 
@@ -101,7 +107,10 @@ jobs:
       - name: Apply Config and Versioning
         run: |
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
-          
+	  cp .github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
+
+          # inizializza variabile
+          PATCH_STATUS="applied"
           # Patching dei file personali
           rm -rf builder_repo/.git builder_repo/.github
           for file in $(grep -rl "XXXXXX/YYYYYY" builder_repo/ || true); do
@@ -113,6 +122,9 @@ jobs:
               cd ${{ env.REPO_DIR }}
               patch -p1 < ../builder_repo/attendedsysupgrade-with-GitHub.patch || echo "Patch fallita o già applicata"
               cd ..
+          else
+            echo "⚠️ Patch non trovata, procedo comunque"
+            PATCH_STATUS="missing"
           fi
 
           # Spostamento Files
@@ -122,9 +134,15 @@ jobs:
 
           # Forza il NOME del firmware usando BUILD_TYPE
           cd ${{ env.REPO_DIR }}
+
+          # Rimuove definizioni esistenti per evitare duplicati
           sed -i '/CONFIG_VERSION_NUMBER/d' .config
           sed -i '/CONFIG_VERSION_CODE/d' .config
+          
+          # Usa la variabile BUILD_TYPE definita in cima al file
           echo 'CONFIG_VERSION_NUMBER="${{ env.BUILD_TYPE }}"' >> .config
+          
+          # Aggiunge la data per rendere il file unico (es. snapshot-2026-04-10)
           echo "CONFIG_VERSION_CODE=\"$(date +%Y-%m-%d)\"" >> .config
           
           make defconfig
@@ -144,7 +162,7 @@ jobs:
           cd ${{ env.REPO_DIR }}
           make package/index
 
-          # 📦 prepara file release
+      # 📦 prepara file release
       - name: Prepare release
         run: |
           cd ${{ env.REPO_DIR }}
@@ -211,7 +229,6 @@ jobs:
           echo "📦 Copio pacchetti da: $PKG_DIR"
           cp -r "$PKG_DIR"/* release/packages/
 
-
           
           # rigenera index opkg
           cd release/packages
@@ -232,7 +249,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ needs.check.outputs.commit }}
-          name: SNAPSHOT - ${{ env.DATE }}
+          name: ${{ env.BUILD_TYPE == 'snapshot' && 'SNAPSHOT' || 'MAIN' }} - ${{ env.DATE }}
           body: |
             ### OpenWrt Build Info
             - **Branch:** `${{ needs.check.outputs.branch }}`
@@ -240,26 +257,32 @@ jobs:
             - **Date:** ${{ env.DATE }}
             - **Type:** ${{ env.BUILD_TYPE }}
           files: |
-            snapshot/release/firmware/*
-            snapshot/release/packages.tar.gz
-            snapshot/.config
-      
+            ${{ env.REPO_DIR }}/release/firmware/*
+            ${{ env.REPO_DIR }}/release/packages.tar.gz
+            ${{ env.REPO_DIR }}/.config
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
+     
       - name: Deploy to GitHub Pages
         run: |
           mkdir -p public/${{ env.BUILD_TYPE }}
           # Copia tutto quello che abbiamo preparato in release/packages
           #cp -rv ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}/
           find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+          find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
 
           # Genera Index HTML
           cd public/${{ env.BUILD_TYPE }}
+          # Usiamo BUILD_TYPE nel titolo per coerenza
           echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
           echo "<h1>OpenWrt Packages - ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> index.html
+          
+          # Generiamo la lista file in modo pulito
           ls -1 | grep -v "index.html" | while read f; do
             echo "<li><a href=\"$f\">$f</a></li>" >> index.html
           done
+          
           echo "</ul><hr><p>Generated on $(date)</p></body></html>" >> index.html
 
       - name: Publish Pages
@@ -299,6 +322,9 @@ jobs:
             🔗 Run:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             
+            Path package:
+            https://erpomata.github.io/GL-MT6000/${{ env.REPO_DIR }}/
+
             ⚠️ Patch status: ${{ env.PATCH_STATUS }}
           to: ${{ secrets.MAIL_USER }}
           from: OpenWrt CI <${{ secrets.MAIL_USER }}>
