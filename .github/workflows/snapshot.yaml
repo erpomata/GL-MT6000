@@ -231,18 +231,18 @@ jobs:
           echo "SHORT=$SHORT" >> $GITHUB_ENV
 
 
-        - name: Publish Release
+      - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-            tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ needs.check.outputs.commit }}
-            name: SNAPSHOT - ${{ env.DATE }}
-            body: |
+          tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ needs.check.outputs.commit }}
+          name: SNAPSHOT - ${{ env.DATE }}
+          body: |
             ### OpenWrt Build Info
             - **Branch:** `${{ needs.check.outputs.branch }}`
             - **Commit SHA:** `${{ needs.check.outputs.commit }}`
             - **Date:** ${{ env.DATE }}
             - **Type:** ${{ env.BUILD_TYPE }}
-            files: |
+          files: |
             release/firmware/*
             release/packages.tar.gz
             .config
