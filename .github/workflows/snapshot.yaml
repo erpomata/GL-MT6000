@@ -152,6 +152,7 @@ jobs:
           DATE=$(date +%Y-%m-%d)
           COMMIT=${{ needs.check.outputs.commit }}
           SHORT=${COMMIT:0:7}
+          SOURCE_DIR=bin/targets
           
           mkdir -p release/firmware
           mkdir -p release/packages
@@ -159,40 +160,45 @@ jobs:
           #echo "📂 Contenuto di: "${{ env.REPO_DIR }}
           #ls -R || true
           
+
           # =========================
-          # 🔥 FIRMWARE
+          # 🔥 FIRMWARE (solo bin/targets)
           # =========================
-          # Cerchiamo in modo ricorsivo qualsiasi file che finisca per sysupgrade.bin
-          FILES=$(find . -name "*sysupgrade.bin" 2>/dev/null)
-          
-          if [ -z "$FILES" ]; then
-            echo "❌ Nessun firmware sysupgrade trovato!"
-            echo "📂 Debug struttura attuale:"
-            find . -maxdepth 4
-            exit 1
-          else
-            echo "✅ Firmware trovato:"
-            echo "$FILES"
-            # Copiamo mantenendo la struttura o solo i file
-            find . -name "*sysupgrade.bin" -exec cp {} release/firmware/ \;
-            # Copiamo anche i file di log/info se presenti nella stessa cartella
-            TARGET_DIR=$(dirname $(echo "$FILES" | head -n1))
-            cp -r $TARGET_DIR/* release/firmware/ 2>/dev/null || true
-          fi
-          
-          # =========================
-          # 📦 PACKAGES
-          # =========================
-          PKG_PATH=$(find . -type d -path "*/packages/*" | head -n1)
-          if [ -z "$PKG_PATH" ]; then
-            echo "❌ Nessun pacchetto trovato!"
-            ls -R bin || true
+          FW_DIR=$(find bin/targets -type f -name "*sysupgrade.bin" -print -quit)
+
+          if [ -z "$FW_DIR" ]; then
+            echo "❌ Nessun firmware sysupgrade trovato in bin/targets!"
+            find bin/targets -maxdepth 4 || true
             exit 1
           fi
+    
+          echo "✅ Firmware trovato:"
+          echo "$FW_DIR"
+    
+          # Copia solo i sysupgrade.bin
+          find bin/targets -type f -name "*sysupgrade.bin" \
+            -exec cp {} release/firmware/ \;
+    
+          # Copia anche checksum e manifest (opzionale ma utilissimo)
+          find bin/targets -type f \( -name "*.sha256*" -o -name "*.manifest" \) \
+            -exec cp {} release/firmware/ \; 2>/dev/null || true
 
           
+
+          # =========================
+          # 📦 PACKAGES (solo bin/packages)
+          # =========================
+          PKG_PATH=$(find bin/packages -mindepth 1 -maxdepth 1 -type d | head -n1)
+          
+          if [ -z "$PKG_PATH" ]; then
+            echo "❌ Nessun pacchetto trovato in bin/packages!"
+            find bin/packages || true
+            exit 1
+          fi
+          
           echo "📦 Copio pacchetti da: $PKG_PATH"
-          cp -r $PKG_PATH/* release/packages/
+          cp -r "$PKG_PATH"/* release/packages/
+
           
           # rigenera index opkg
           cd release/packages
