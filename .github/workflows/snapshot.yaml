@@ -102,10 +102,22 @@ jobs:
           fi
           
       # 📦 clona repo pesa con branch automatico
-      - name: Clone Pes1234 OpenWrt ${{ env.REPO_DIR }}
-        run: |
-          git clone --depth 1 -b ${{ needs.check.outputs.branch }} https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
-
+      #- name: Clone Pes1234 OpenWrt ${{ env.REPO_DIR }}
+      #  run: |
+      #    git clone --depth 1 -b ${{ needs.check.outputs.branch }} https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          repository: pesa1234/openwrt
+          # Usa la variabile definita negli env:
+          ref: ${{ env.BRANCH }}
+          # La cartella di destinazione
+          path: snapshot
+          # NON pulire la cartella per preservare la cache (dl, staging_dir, ecc.)
+          clean: false
+          # Scarica solo l'ultimo commit per risparmiare tempo e spazio
+          fetch-depth: 1
+          
       - name: Update and Install feeds
         run: |
           cd ${{ env.REPO_DIR }}
