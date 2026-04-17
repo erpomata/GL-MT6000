@@ -110,7 +110,7 @@ jobs:
         with:
           repository: pesa1234/openwrt
           # Usa la variabile definita negli env:
-          ref: ${{ env.BRANCH }}
+          ref: ${{ needs.check.outputs.branch }}
           # La cartella di destinazione
           path: snapshot
           # NON pulire la cartella per preservare la cache (dl, staging_dir, ecc.)
