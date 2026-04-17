@@ -138,14 +138,21 @@ jobs:
           # Rimuove definizioni esistenti per evitare duplicati
           sed -i '/CONFIG_VERSION_NUMBER/d' .config
           sed -i '/CONFIG_VERSION_CODE/d' .config
+          sed -i '/CONFIG_VERSION_PRODUCT/d' .config
 
           export TZ="Europe/Rome"
+          # 2. Crea la variabile data una volta sola per coerenza
+          NOW=$(date +"%d-%m-%Y_%H%M")
+
+          # Usiamo la data SOLO in VERSION_NUMBER per il nome del file
+          echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}-$NOW\"" >> .config
           
-          # Usa la variabile BUILD_TYPE definita in cima al file
-          echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}-$(date +%d-%m-%Y_%H%M)\"" >> .config
-                    
-          # Aggiunge la data per rendere il file unico (es. snapshot-2026-04-10)
-          echo "CONFIG_VERSION_CODE=\"$(date +%d-%m-%Y_%H%M)\"" >> .config
+          # VERSION_CODE lo lasciamo semplice o identico, 
+          # ma OpenWrt spesso lo usa solo internamente.
+          echo "CONFIG_VERSION_CODE=\"$NOW\"" >> .config
+          
+          # Opzionale: puliamo anche il nome prodotto se vuoi un nome file ancora più corto
+          echo 'CONFIG_VERSION_PRODUCT=""' >> .config
           
           make defconfig
 
