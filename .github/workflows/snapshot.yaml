@@ -119,17 +119,18 @@ jobs:
       - name: Sync Source to Cache Folder
         run: |
           # Crea la cartella snapshot se la cache era vuota
-          mkdir -p snapshot
+          mkdir -p ${{ env.REPO_DIR }}
           
           # rsync è il modo più sicuro per "fondere" le cartelle:
           # -a: mantiene i permessi e la struttura (archive)
           # -v: mostra cosa sta facendo (verbose)
           # --delete: NON lo usiamo, così non cancelliamo la cache (dl, staging_dir)
           # --exclude='.git/': ignora la cartella Git dei sorgenti
-          rsync -av --exclude='.git/' temp_src{{ env.REPO_DIR }}/ ${{ env.REPO_DIR }}/
+          TEMP_NAME="temp_src${{ env.REPO_DIR }}"
+          rsync -av --exclude='.git/' "$TEMP_NAME/" ${{ env.REPO_DIR }}/
           
           # Eliminiamo la cartella temporanea
-          rm -rf temp_src${{ env.REPO_DIR }}
+          rm -rf "$TEMP_NAME/"
           
       - name: Update and Install feeds
         run: |
