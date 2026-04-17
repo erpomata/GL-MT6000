@@ -181,16 +181,12 @@ jobs:
           sed -i '/CONFIG_CCACHE/d' .config
           sed -i '/CONFIG_CCACHE_DIR/d' .config
 
-          export TZ="Europe/Rome"
-          # 2. Crea la variabile data una volta sola per coerenza
-          NOW=$(date +"%d-%m-%Y_%H%M")
-
           # Usiamo la data SOLO in VERSION_NUMBER per il nome del file
           echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}\"" >> .config
           
           # VERSION_CODE lo lasciamo semplice o identico, 
           # ma OpenWrt spesso lo usa solo internamente.
-          echo "CONFIG_VERSION_CODE=\"$NOW\"" >> .config
+          echo "CONFIG_VERSION_CODE=\"${{ steps.timestamp.outputs.ts }}\"" >> .config
           
           # Opzionale: puliamo anche il nome prodotto se vuoi un nome file ancora più corto
           echo 'CONFIG_VERSION_PRODUCT=""' >> .config
