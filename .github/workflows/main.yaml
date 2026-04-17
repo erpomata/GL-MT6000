@@ -64,121 +64,105 @@ jobs:
       - name: Install deps
         run: |
           sudo apt update
-          sudo apt install -y build-essential clang flex g++ gawk gcc-multilib \
-          gettext git libncurses-dev libssl-dev python3-distutils rsync unzip \
-          zlib1g-dev file wget curl ccache jq
+          sudo apt install -y build-essential clang flex g++ gawk \
+          gettext git libncurses-dev libssl-dev python3-setuptools rsync \
+          unzip zlib1g-dev file wget curl ccache jq swig
 
       # 📦 clona repo pesa con branch automatico
       - name: Clone OpenWrt ${{ env.REPO_DIR }}
         run: |
-          rm -rf ${{ env.REPO_DIR }}
-          git clone https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
-          cd ${{ env.REPO_DIR }}
-          git checkout ${{ needs.check.outputs.branch }}
+          git clone --depth 1 -b ${{ needs.check.outputs.branch }} https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
 
-      # ⚡ cache per velocizzare le build successive
-      - name: Cache
-        uses: actions/cache@v5.0.4
+      - name: Cache ccache
+        uses: actions/cache@v4
         with:
-          path: ${{ env.REPO_DIR }}/.ccache
-          # La chiave include il branch e il commit della config per invalidarla se necessario
+          path: |
+            ${{ env.REPO_DIR }}/dl
+            ${{ env.REPO_DIR }}/feeds
+            ${{ env.REPO_DIR }}/staging_dir
+            ${{ env.REPO_DIR }}/.ccache
           key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
 
-      # 📦 aggiorna feeds
-      - name: Update feeds
+      - name: Update and Install feeds
         run: |
           cd ${{ env.REPO_DIR }}
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Checkout mio repository
-        uses: actions/checkout@v6.0.2
+      - name: Checkout Helper Repo (Patch & Files)
+        uses: actions/checkout@v5
         with:
-         path: "builder_repo"
+          path: "builder_repo"
 
-      # ⚙️ applica configurazione personalizzata
-      - name: Apply config
+      - name: Apply Config and Versioning
         run: |
           cp ${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
-          cp .github/workflows/main.yaml ${{ env.REPO_DIR }}/
+          cp .github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
 
           # inizializza variabile
           PATCH_STATUS="applied"
-
-          # patcha senza cambiare cartella
-          rm -frv builder_repo/.git builder_repo/.github
-          for file in $(grep -rl XXXXXX builder_repo/); do
-              echo "Patching: $file"
-              cp "$file" "${file}.bak"
-              sed -i "s|XXXXXX/YYYYYY|${GITHUB_REPOSITORY}|g" "$file" || exit 1
-              diff "${file}.bak" "$file" || true  # <--- Forza il successo
+          # Patching dei file personali
+          rm -rf builder_repo/.git builder_repo/.github
+          for file in $(grep -rl "XXXXXX/YYYYYY" builder_repo/ || true); do
+              sed -i "s|XXXXXX/YYYYYY|${{ github.repository }}|g" "$file"
           done
 
+          # Applicazione Patch AttendedSysupgrade
           if [ -f builder_repo/attendedsysupgrade-with-GitHub.patch ]; then
               cd ${{ env.REPO_DIR }}
-              if ! patch -p1 --forward < ../builder_repo/attendedsysupgrade-with-GitHub.patch; then
-                  PATCH_STATUS="skipped"
-                  echo "⚠️ Patch non applicata"
-              else
-                  echo "✅ Patch applicata"
-              fi
+              patch -p1 < ../builder_repo/attendedsysupgrade-with-GitHub.patch || echo "Patch fallita o già applicata"
               cd ..
           else
             echo "⚠️ Patch non trovata, procedo comunque"
             PATCH_STATUS="missing"
           fi
 
-          echo "PATCH_STATUS=$PATCH_STATUS" >> $GITHUB_ENV
+          # Spostamento Files
+          [ -d builder_repo/files ] && mv builder_repo/files ${{ env.REPO_DIR }}/
+          chmod 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt 2>/dev/null || true
+          chmod 755 ${{ env.REPO_DIR }}/files/www/cgi-bin/github_* 2>/dev/null || true
 
-          mv -v builder_repo/files ${{ env.REPO_DIR }}/
-          chmod -v 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt ${{ env.REPO_DIR }}/files/www/cgi-bin/github_*
-
+          # Forza il NOME del firmware usando BUILD_TYPE
           cd ${{ env.REPO_DIR }}
 
           # Rimuove definizioni esistenti per evitare duplicati
           sed -i '/CONFIG_VERSION_NUMBER/d' .config
           sed -i '/CONFIG_VERSION_CODE/d' .config
+          sed -i '/CONFIG_VERSION_PRODUCT/d' .config
+          sed -i '/CONFIG_VERSION_REPO/d' .config
+
+          export TZ="Europe/Rome"
+          # 2. Crea la variabile data una volta sola per coerenza
+          NOW=$(date +"%d-%m-%Y_%H%M")
+
+          # Usiamo la data SOLO in VERSION_NUMBER per il nome del file
+          echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}-$NOW\"" >> .config
           
-          # Usa la variabile BUILD_TYPE definita in cima al file
-          echo 'CONFIG_VERSION_NUMBER="${{ env.BUILD_TYPE }}"' >> .config
+          # VERSION_CODE lo lasciamo semplice o identico, 
+          # ma OpenWrt spesso lo usa solo internamente.
+          echo "CONFIG_VERSION_CODE=\"$NOW\"" >> .config
           
-          # Aggiunge la data per rendere il file unico (es. snapshot-2026-04-10)
-          echo "CONFIG_VERSION_CODE=\"$(date +%Y-%m-%d)\"" >> .config
+          # Opzionale: puliamo anche il nome prodotto se vuoi un nome file ancora più corto
+          echo 'CONFIG_VERSION_PRODUCT=""' >> .config
+          
+          # Punta automaticamente a snapshot o main in base al job
+          echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}\"" >> .config
 
           make defconfig
 
-      # 🚫 rimuove pacchetti problematici
-      - name: Clean problematic packages
-        run: |
-          cd ${{ env.REPO_DIR }}
-          sed -i '/fwupd/d' .config || true
-          sed -i '/kmod-nvidia/d' .config || true
-          sed -i '/kmod-vbox/d' .config || true
-          sed -i '/python3-pkg-resources/d' .config || true
-          make defconfig
-
-      # 🔧 toolchain (compilatori ecc.)
-      - name: Build toolchain
+      - name: Build Toolchain
         run: |
           cd ${{ env.REPO_DIR }}
           make -j$(nproc) tools/install toolchain/install
 
-      # 🎯 build firmware
-      - name: Build firmware
+      - name: Build Firmware
         run: |
           cd ${{ env.REPO_DIR }}
           make -j$(nproc) || make -j1 V=s
 
-      # 📦 build pacchetti (continua anche con errori)
-      #- name: Build packages
-      #  run: |
-      #    cd ${{ env.REPO_DIR }}
-      #    make -k -j$(nproc) package/compile
-
-      # 📚 genera repository opkg
-      - name: Generate repo
+      - name: Generate Index and Repo
         run: |
           cd ${{ env.REPO_DIR }}
           make package/index
@@ -191,6 +175,7 @@ jobs:
           DATE=$(date +%Y-%m-%d)
           COMMIT=${{ needs.check.outputs.commit }}
           SHORT=${COMMIT:0:7}
+          SOURCE_DIR=bin
           
           mkdir -p release/firmware
           mkdir -p release/packages
@@ -198,40 +183,57 @@ jobs:
           #echo "📂 Contenuto di: "${{ env.REPO_DIR }}
           #ls -R || true
           
-          # =========================
-          # 🔥 FIRMWARE
-          # =========================
-          # Cerchiamo in modo ricorsivo qualsiasi file che finisca per sysupgrade.bin
-          FILES=$(find . -name "*sysupgrade.bin" 2>/dev/null)
-          
-          if [ -z "$FILES" ]; then
-            echo "❌ Nessun firmware sysupgrade trovato!"
-            echo "📂 Debug struttura attuale:"
-            find . -maxdepth 4
-            exit 1
-          else
-            echo "✅ Firmware trovato:"
-            echo "$FILES"
-            # Copiamo mantenendo la struttura o solo i file
-            find . -name "*sysupgrade.bin" -exec cp {} release/firmware/ \;
-            # Copiamo anche i file di log/info se presenti nella stessa cartella
-            TARGET_DIR=$(dirname $(echo "$FILES" | head -n1))
-            cp -r $TARGET_DIR/* release/firmware/ 2>/dev/null || true
-          fi
-          
-          # =========================
-          # 📦 PACKAGES
-          # =========================
-          PKG_PATH=$(find . -type d -path "*/packages/*" | head -n1)
-          if [ -z "$PKG_PATH" ]; then
-            echo "❌ Nessun pacchetto trovato!"
-            ls -R bin || true
-            exit 1
-          fi
 
+          # =========================
+          # 🔥 FIRMWARE (solo bin/targets)
+          # =========================
+
+          TARGETS_DIR=$(find "$SOURCE_DIR" -type d -name targets | head -n1)
+         
+          if [ -z "$TARGETS_DIR" ]; then
+            echo "❌ Directory targets non trovata sotto $SOURCE_DIR"
+            find "$SOURCE_DIR" -maxdepth 3 || true
+            exit 1
+          fi
+         
+          echo "📂 Uso TARGETS_DIR=$TARGETS_DIR"
+         
+          #FW_FILES=$(find "$TARGETS_DIR" -type f -name "*sysupgrade.bin")
+          FW_FILES=$(find "$TARGETS_DIR" -type f \( -name "*.bin" -o -name "*.fip" \))
+         
+          if [ -z "$FW_FILES" ]; then
+            echo "❌ Nessun firmware sysupgrade trovato!"
+            find "$TARGETS_DIR" -maxdepth 4 || true
+            exit 1
+          fi
+         
+          echo "✅ Firmware trovato:"
+          echo "$FW_FILES"
+         
+          # Copia firmware
+          echo "$FW_FILES" | while read -r fw; do
+            cp "$fw" release/firmware/
+          done
+         
+          # Copia checksum / manifest (se presenti)
+          find "$TARGETS_DIR" -type f \( -name "*.sha256*" -o -name "*.manifest" \) \
+            -exec cp {} release/firmware/ \; 2>/dev/null || true
+
+          # =========================
+          # 📦 PACKAGES (solo bin/packages)
+          # =========================
+
+          PKG_DIR=$(find "$SOURCE_DIR" -type d -path "*/packages/*" | head -n1)
           
-          echo "📦 Copio pacchetti da: $PKG_PATH"
-          cp -r $PKG_PATH/* release/packages/
+          if [ -z "$PKG_DIR" ]; then
+            echo "❌ Directory packages non trovata sotto $SOURCE_DIR"
+            find "$SOURCE_DIR" -maxdepth 3 || true
+            exit 1
+          fi
+          
+          echo "📦 Copio pacchetti da: $PKG_DIR"
+          cp -r "$PKG_DIR"/* release/packages/
+
           
           # rigenera index opkg
           cd release/packages
@@ -248,50 +250,48 @@ jobs:
           echo "DATE=$DATE" >> $GITHUB_ENV
           echo "SHORT=$SHORT" >> $GITHUB_ENV
 
-      # 🚀 pubblica release
-      - name: Publish release
-        uses: softprops/action-gh-release@v2.6.1
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ env.SHORT }}
-          name: STABLE ${{ env.DATE }}
+          tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ needs.check.outputs.commit }}
+          name: ${{ env.BUILD_TYPE == 'snapshot' && 'SNAPSHOT' || 'MAIN' }} - ${{ env.DATE }}
           body: |
-            Branch: ${{ needs.check.outputs.branch }}
-            Commit: ${{ needs.check.outputs.commit }}
+            ### OpenWrt Build Info
+            - **Branch:** `${{ needs.check.outputs.branch }}`
+            - **Commit SHA:** `${{ needs.check.outputs.commit }}`
+            - **Date:** ${{ env.DATE }}
+            - **Type:** ${{ env.BUILD_TYPE }}
           files: |
-            ${{ env.REPO_DIR }}/release/firmware/**
+            ${{ env.REPO_DIR }}/release/firmware/*
             ${{ env.REPO_DIR }}/release/packages.tar.gz
-            ${{ env.REPO_DIR }}/mt6000.config
-            ${{ env.REPO_DIR }}/main.yaml   # se l'hai copiato
-
-        env:
+            ${{ env.REPO_DIR }}/.config
+            ${{ env.REPO_DIR }}/${{ env.BUILD_TYPE }}.yaml
+          env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 🧹 pulizia vecchie release (mantiene le ultime 10)
-      - name: Clean old releases
-        run: |
-          echo "🧹 Cleaning old releases..."
-          gh api repos/${{ github.repository }}/releases \
-            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | "\(.id) \(.tag_name)"' \
-            | tail -n +11 \
-            | while read id tag; do
-                echo "Deleting release $tag"
-                gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
-                gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
-              done
-      
       - name: Deploy to GitHub Pages
         run: |
           mkdir -p public/${{ env.BUILD_TYPE }}
+          # Copia tutto quello che abbiamo preparato in release/packages
+          #cp -rv ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}/
+          find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+          find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
 
-          # 1. Copia i file di indice (cerca sia con p minuscola che maiuscola per sicurezza)
-          # -iname "packages*" troverà packages.adb, Packages.adb, packages.gz, ecc.
-          find ${{ env.REPO_DIR }}/bin -iname "packages*" -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+          # Trova l'indice dei pacchetti e nominalo come vuole il router (APKINDEX.tar.gz)
+          # Cerchiamo il file .adb generato dalla build
+          INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
+          
+          if [ -f "$INDEX_FILE" ]; then
+            echo "✅ Indice trovato, lo copio come APKINDEX.tar.gz"
+            cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/APKINDEX.tar.gz
+            # Copialo anche con il vecchio nome per compatibilità
+            cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/packages.adb
+          else
+            echo "❌ ERRORE: Indice packages.adb non trovato!"
+            exit 1
+          fi
 
-          # 2. Copia i pacchetti reali (apk o ipk)
-          find ${{ env.REPO_DIR }}/bin -name "*.apk" -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
-          find ${{ env.REPO_DIR }}/bin -name "*.ipk" -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
-
-          # 3. Genera l'index.html per vedere i file nel browser
+          # Genera Index HTML
           cd public/${{ env.BUILD_TYPE }}
           # Usiamo BUILD_TYPE nel titolo per coerenza
           echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
@@ -303,13 +303,24 @@ jobs:
           done
           
           echo "</ul><hr><p>Generated on $(date)</p></body></html>" >> index.html
-      
+
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           keep_files: true
+
+      - name: Clean Old Releases
+        run: |
+          gh api repos/${{ github.repository }}/releases \
+            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | "\(.id) \(.tag_name)"' \
+            | tail -n +11 | while read id tag; do
+                gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
+                gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
+              done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 📧 invio email in caso di successo
       - name: Send email
@@ -330,6 +341,9 @@ jobs:
             🔗 Run:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             
+            Path package:
+            https://erpomata.github.io/GL-MT6000/${{ env.REPO_DIR }}/
+
             ⚠️ Patch status: ${{ env.PATCH_STATUS }}
           to: ${{ secrets.MAIL_USER }}
           from: OpenWrt CI <${{ secrets.MAIL_USER }}>
