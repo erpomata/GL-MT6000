@@ -287,7 +287,7 @@ jobs:
 
           # Trova l'indice dei pacchetti e nominalo come vuole il router (APKINDEX.tar.gz)
           # Cerchiamo il file .adb generato dalla build
-          INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin/packages/ -name "packages.adb" | head -n 1)
+          INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
           
           if [ -f "$INDEX_FILE" ]; then
             echo "✅ Indice trovato, lo copio come APKINDEX.tar.gz"
@@ -298,7 +298,6 @@ jobs:
             echo "❌ ERRORE: Indice packages.adb non trovato!"
             exit 1
           fi
-
 
           # Genera Index HTML
           cd public/${{ env.BUILD_TYPE }}
