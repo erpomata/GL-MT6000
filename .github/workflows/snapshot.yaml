@@ -65,6 +65,12 @@ jobs:
     if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     steps:
+      - name: Generate Timestamp
+        id: timestamp
+        run: |
+          # Imposta l'ora italiana (se vuoi) e genera il formato
+          echo "ts=$(date +'%d-%m-%Y-%H%M')" >> $GITHUB_OUTPUT
+
       # 🔧 installa dipendenze
       - name: Install deps
         run: |
@@ -90,18 +96,6 @@ jobs:
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
 
-      #- name: Clean directory for clone
-      #  run: |
-      #    if [ -d "snapshot" ]; then
-      #      # Elimina tutto tranne eventualmente le cartelle che vuoi davvero tenere (es. dl o staging_dir)
-      #      # Se vuoi un clone pulito, è meglio fare:
-      #      find snapshot -maxdepth 1 ! -name 'snapshot' ! -name 'dl' -exec rm -rf {} +
-      #    fi
-          
-      # 📦 clona repo pesa con branch automatico
-      #- name: Clone Pes1234 OpenWrt ${{ env.REPO_DIR }}
-      #  run: |
-      #    git clone --depth 1 -b ${{ needs.check.outputs.branch }} https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
       - name: Checkout Source
         uses: actions/checkout@v4
         with:
@@ -200,8 +194,9 @@ jobs:
           # Opzionale: puliamo anche il nome prodotto se vuoi un nome file ancora più corto
           echo 'CONFIG_VERSION_PRODUCT=""' >> .config
           
-          # Punta automaticamente a snapshot o main in base al job
-          echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}\"" >> .config
+          # Definiamo la sottocartella specifica
+          SUBDIR="${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}"
+          echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/$SUBDIR\"" >> .config
 
           # --- OTTIMIZZAZIONE CACHE ---
           # Abilita ccache nel sistema di build
@@ -211,11 +206,6 @@ jobs:
           # ----------------------------
 
           make defconfig
-
-#      - name: Build Toolchain
-#        run: |
-#          cd ${{ env.REPO_DIR }}
-#          make -j$(nproc) tools/install toolchain/install
 
       - name: Build Firmware
         run: |
@@ -329,40 +319,89 @@ jobs:
           env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      #- name: Deploy to GitHub Pages
+      #  run: |
+      #    mkdir -p public/${{ env.BUILD_TYPE }}
+      #    # Copia tutto quello che abbiamo preparato in release/packages
+      #    #cp -rv ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}/
+      #    find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+      #    find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+
+      #    # Trova l'indice dei pacchetti e nominalo come vuole il router (APKINDEX.tar.gz)
+      #    # Cerchiamo il file .adb generato dalla build
+      #    INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
+         
+      #    if [ -f "$INDEX_FILE" ]; then
+      #      echo "✅ Indice trovato, lo copio come APKINDEX.tar.gz"
+      #      cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/APKINDEX.tar.gz
+      #      # Copialo anche con il vecchio nome per compatibilità
+      #      cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/packages.adb
+      #    else
+      #      echo "❌ ERRORE: Indice packages.adb non trovato!"
+      #      exit 1
+      #    fi
+
+      #    # Genera Index HTML
+      #    cd public/${{ env.BUILD_TYPE }}
+      #    # Usiamo BUILD_TYPE nel titolo per coerenza
+      #    echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
+      #    echo "<h1>OpenWrt Packages - ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> index.html
+          
+      #    # Generiamo la lista file in modo pulito
+      #    ls -1 | grep -v "index.html" | while read f; do
+      #      echo "<li><a href=\"$f\">$f</a></li>" >> index.html
+      #    done
+          
+      #    echo "</ul><hr><p>Generated on $(date)</p></body></html>" >> index.html
+
       - name: Deploy to GitHub Pages
         run: |
-          mkdir -p public/${{ env.BUILD_TYPE }}
-          # Copia tutto quello che abbiamo preparato in release/packages
-          #cp -rv ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}/
-          find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
-          find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+          # Definiamo il percorso usando il timestamp generato prima
+          TS="${{ steps.timestamp.outputs.ts }}"
+          TARGET_PATH="public/${{ env.BUILD_TYPE }}/$TS"
+          
+          echo "🚀 Preparazione cartella deploy: $TARGET_PATH"
+          mkdir -p "$TARGET_PATH"
+          
+          # 1. Copia dei file (Firmware e Pacchetti)
+          # Usiamo find per pescare i file dalle cartelle di release
+          find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
+          find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} "$TARGET_PATH/" \;
 
-          # Trova l'indice dei pacchetti e nominalo come vuole il router (APKINDEX.tar.gz)
-          # Cerchiamo il file .adb generato dalla build
+          # 2. Gestione Indice APK (fondamentale per il router)
           INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
           
           if [ -f "$INDEX_FILE" ]; then
-            echo "✅ Indice trovato, lo copio come APKINDEX.tar.gz"
-            cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/APKINDEX.tar.gz
-            # Copialo anche con il vecchio nome per compatibilità
-            cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/packages.adb
+            echo "✅ Indice trovato, lo converto per il router"
+            cp "$INDEX_FILE" "$TARGET_PATH/APKINDEX.tar.gz"
+            cp "$INDEX_FILE" "$TARGET_PATH/packages.adb"
           else
-            echo "❌ ERRORE: Indice packages.adb non trovato!"
+            echo "❌ ERRORE: packages.adb non trovato. La build potrebbe essere incompleta."
             exit 1
           fi
 
-          # Genera Index HTML
-          cd public/${{ env.BUILD_TYPE }}
-          # Usiamo BUILD_TYPE nel titolo per coerenza
-          echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
-          echo "<h1>OpenWrt Packages - ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> index.html
+          # 3. Generazione Index HTML della build specifica
+          cd "$TARGET_PATH"
+          echo "<html><head><title>Build $TS</title></head><body style='font-family:sans-serif; padding:20px;'>" > index.html
+          echo "<h1>OpenWrt Build: $TS (${{ env.BUILD_TYPE }})</h1><hr><ul>" >> index.html
           
-          # Generiamo la lista file in modo pulito
+          # Lista i file escludendo l'index stesso
           ls -1 | grep -v "index.html" | while read f; do
             echo "<li><a href=\"$f\">$f</a></li>" >> index.html
           done
+          echo "</ul><hr><p>Build completion: $(date)</p></body></html>" >> index.html
           
-          echo "</ul><hr><p>Generated on $(date)</p></body></html>" >> index.html
+          # 4. Aggiornamento dell'indice principale (Menu delle build)
+          cd ../..
+          MAIN_INDEX="public/${{ env.BUILD_TYPE }}/index.html"
+          echo "<html><head><title>Build History</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$MAIN_INDEX"
+          echo "<h1>Cronologia Build ${{ env.BUILD_TYPE }}</h1><ul>" >> "$MAIN_INDEX"
+          
+          # Elenca tutte le cartelle timestamp (dalla più recente alla più vecchia)
+          ls -dt */ | grep -v "index.html" | while read dir; do
+            echo "<li><a href=\"$dir\">$dir</a></li>" >> "$MAIN_INDEX"
+          done
+          echo "</ul><p><a href='../'>.. Torna su</a></p></body></html>" >> "$MAIN_INDEX"
 
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4
