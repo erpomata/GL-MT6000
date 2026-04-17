@@ -139,6 +139,7 @@ jobs:
           sed -i '/CONFIG_VERSION_NUMBER/d' .config
           sed -i '/CONFIG_VERSION_CODE/d' .config
           sed -i '/CONFIG_VERSION_PRODUCT/d' .config
+          sed -i '/CONFIG_VERSION_REPO/d' .config
 
           export TZ="Europe/Rome"
           # 2. Crea la variabile data una volta sola per coerenza
@@ -154,6 +155,9 @@ jobs:
           # Opzionale: puliamo anche il nome prodotto se vuoi un nome file ancora più corto
           echo 'CONFIG_VERSION_PRODUCT=""' >> .config
           
+          # Punta automaticamente a snapshot o main in base al job
+          echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}\"" >> .config
+
           make defconfig
 
       - name: Build Toolchain
@@ -273,7 +277,6 @@ jobs:
           env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-     
       - name: Deploy to GitHub Pages
         run: |
           mkdir -p public/${{ env.BUILD_TYPE }}
@@ -281,6 +284,21 @@ jobs:
           #cp -rv ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}/
           find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
           find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
+
+          # Trova l'indice dei pacchetti e nominalo come vuole il router (APKINDEX.tar.gz)
+          # Cerchiamo il file .adb generato dalla build
+          INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin/packages/ -name "packages.adb" | head -n 1)
+          
+          if [ -f "$INDEX_FILE" ]; then
+            echo "✅ Indice trovato, lo copio come APKINDEX.tar.gz"
+            cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/APKINDEX.tar.gz
+            # Copialo anche con il vecchio nome per compatibilità
+            cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/packages.adb
+          else
+            echo "❌ ERRORE: Indice packages.adb non trovato!"
+            exit 1
+          fi
+
 
           # Genera Index HTML
           cd public/${{ env.BUILD_TYPE }}
