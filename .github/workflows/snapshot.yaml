@@ -148,7 +148,7 @@ jobs:
           NOW=$(date +"%d-%m-%Y_%H%M")
 
           # Usiamo la data SOLO in VERSION_NUMBER per il nome del file
-          echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}-$NOW\"" >> .config
+          echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}\"" >> .config
           
           # VERSION_CODE lo lasciamo semplice o identico, 
           # ma OpenWrt spesso lo usa solo internamente.
