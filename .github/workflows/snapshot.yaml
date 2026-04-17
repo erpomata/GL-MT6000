@@ -138,10 +138,12 @@ jobs:
           # Rimuove definizioni esistenti per evitare duplicati
           sed -i '/CONFIG_VERSION_NUMBER/d' .config
           sed -i '/CONFIG_VERSION_CODE/d' .config
+
+          export TZ="Europe/Rome"
           
           # Usa la variabile BUILD_TYPE definita in cima al file
-          echo 'CONFIG_VERSION_NUMBER="${{ env.BUILD_TYPE }}"' >> .config
-          
+          echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}-$(date +%d-%m-%Y_%H%M)\"" >> .config
+                    
           # Aggiunge la data per rendere il file unico (es. snapshot-2026-04-10)
           echo "CONFIG_VERSION_CODE=\"$(date +%d-%m-%Y_%H%M)\"" >> .config
           
