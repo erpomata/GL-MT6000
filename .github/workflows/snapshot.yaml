@@ -93,8 +93,16 @@ jobs:
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
 
+      - name: Clean directory for clone
+        run: |
+          if [ -d "snapshot" ]; then
+            # Elimina tutto tranne eventualmente le cartelle che vuoi davvero tenere (es. dl o staging_dir)
+            # Se vuoi un clone pulito, è meglio fare:
+            find snapshot -maxdepth 1 ! -name 'snapshot' ! -name 'dl' -exec rm -rf {} +
+          fi
+          
       # 📦 clona repo pesa con branch automatico
-      - name: Clone OpenWrt ${{ env.REPO_DIR }}
+      - name: Clone Pes1234 OpenWrt ${{ env.REPO_DIR }}
         run: |
           git clone --depth 1 -b ${{ needs.check.outputs.branch }} https://github.com/${{ env.REPO }}.git ${{ env.REPO_DIR }}
 
