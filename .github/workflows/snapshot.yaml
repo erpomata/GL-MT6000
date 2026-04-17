@@ -143,7 +143,7 @@ jobs:
           echo 'CONFIG_VERSION_NUMBER="${{ env.BUILD_TYPE }}"' >> .config
           
           # Aggiunge la data per rendere il file unico (es. snapshot-2026-04-10)
-          echo "CONFIG_VERSION_CODE=\"$(date +%Y-%m-%d)\"" >> .config
+          echo "CONFIG_VERSION_CODE=\"$(date +%d-%m-%Y_%H%M)\"" >> .config
           
           make defconfig
 
