@@ -68,8 +68,9 @@ jobs:
       - name: Generate Timestamp
         id: timestamp
         run: |
-          # Imposta l'ora italiana (se vuoi) e genera il formato
-          echo "ts=$(date +'%d-%m-%Y-%H%M')" >> $GITHUB_OUTPUT
+          # Imposta il fuso orario di Roma
+          TS=$(TZ='Europe/Rome' date +'%d-%m-%Y-%H%M')
+          echo "ts=$TS" >> $GITHUB_OUTPUT
 
       # 🔧 installa dipendenze
       - name: Install deps
@@ -441,6 +442,15 @@ jobs:
           subject: OpenWrt ${{ env.BUILD_TYPE }} Build SUCCESS
           body: |
             ✅ Build completata
+
+            📂 **Repository Pacchetti (Sito):**
+            https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}/
+
+            📦 **GitHub Release (Firmware e Log):**
+            https://github.com/${{ github.repository }}/releases/tag/${{ env.BUILD_TYPE }}-${{ steps.timestamp.outputs.ts }}
+
+            Build ID: ${{ steps.timestamp.outputs.ts }}
+            Commit: ${{ needs.check.outputs.commit }}
 
             🔗 Release:
             ${{ github.server_url }}/${{ github.repository }}/releases
