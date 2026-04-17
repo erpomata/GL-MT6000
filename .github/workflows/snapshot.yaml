@@ -128,7 +128,7 @@ jobs:
           # --exclude='.git/': ignora la cartella Git dei sorgenti
           TEMP_NAME="temp_src${{ env.REPO_DIR }}"
           #rsync -av --exclude='.git/' "$TEMP_NAME/" ${{ env.REPO_DIR }}/
-          rsync -av "$TEMP_NAME/" ${{ env.REPO_DIR }}/
+          rsync -aq "$TEMP_NAME/" ${{ env.REPO_DIR }}/
           
           # Eliminiamo la cartella temporanea
           rm -rf "$TEMP_NAME/"
