@@ -7,21 +7,6 @@ Instead, **make a fork and adapt to your needs**.
 
 Read [this topic](https://forum.openwrt.org/t/mt6000-custom-build-with-luci-and-some-optimization-kernel-6-12-x/185241) in OpenWrt's forum to learn the details about pesa1234's customizations.
 
-Compared to his custom firmware, this firmware adds:
-- **WiFi UCODE scripts** (faster boot)
-- **Wireguard VPN**
-- **Policy Based Routing** (select what goes through VPN and what not)
-- **AdBlock Fast** (ads and malware blocking at DNS level)
-- **Custom Attended Sysupgrade** (install custom firmware from GitHub)
-
-And also:
-- **REMOVED:** odhcp, upnp, iptables, avahi, samba, usb storage and probably more stuff I forgot to mention.
-- Added the needed packages to use QoS script [cake-wg-pbr](https://github.com/lynxthecat/cake-wg-pbr)
-- Some compiler optimizations and build hardening options (cortex-a53+crc+crypto; LTO, MOLD, and more).
-- SSH configuration with strong algorithms and key exchange methods. Check the content of [`ssh_hardening.config`](files/etc/ssh/sshd_config.d/ssh_hardening.conf) and [`sshd_config`](files/etc/ssh/sshd_config).
-- Quality-of-life enhancements through UCI configuration. Check the content of [`99-QOL_config`](files/etc/uci-defaults/99-QOL_config).
-- Some debug and kernel stuff removed.
-- [`upgrade_custom_openwrt`](files/usr/bin/upgrade_custom_openwrt) script
 
 Check the content of [`mt6000.config`](mt6000.config) for details.
 
