@@ -121,12 +121,13 @@ jobs:
           path: "${{ env.BUILDER_REPO }}"
 
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.5
         with:
           path: |
             ${{ env.REPO_DIR }}/dl
             ${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}
-          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
+          # Usiamo le variabili BUILDER_REPO e CONFIG_FILE per creare il percorso completo
+          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(format('{0}/{1}', env.BUILDER_REPO, env.CONFIG_FILE)) }}
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
 
@@ -217,6 +218,7 @@ jobs:
           sed -i '/CONFIG_VERSION_REPO/d' .config
           sed -i '/CONFIG_CCACHE/d' .config
           sed -i '/CONFIG_CCACHE_DIR/d' .config
+          sed -i '/CONFIG_PER_FEED_REPO/d' .config
 
           # Usiamo la data SOLO in VERSION_NUMBER per il nome del file
           echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}\"" >> .config
@@ -231,6 +233,8 @@ jobs:
           # Definiamo la sottocartella specifica
           SUBDIR="${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}"
           echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/$SUBDIR\"" >> .config
+
+          echo "CONFIG_PER_FEED_REPO=n" >> .config
 
           # --- OTTIMIZZAZIONE CACHE ---
           # Abilita ccache nel sistema di build
@@ -338,12 +342,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.FINAL_TAG }}
-          name: ${{ env.BUILD_TYPE == 'snapshot' && 'SNAPSHOT' || 'MAIN' }} - ${{ steps.timestamp.outputs.ts }}
+          name: ${{ env.FINAL_TAG }}
           body: |
             ### OpenWrt Build Info
             - **Branch:** `${{ needs.check.outputs.branch }}`
             - **Commit SHA:** `${{ needs.check.outputs.commit }}`
-            - **Config Hash:** `${{ steps.detect.outputs.config_hash }}`
+            - **Config Hash:** `${{ needs.check.outputs.config_hash }}`
             - **Date:** ${{ env.DATE }}
             - **Type:** ${{ env.BUILD_TYPE }}
             ---
