@@ -250,11 +250,6 @@ jobs:
           cd ${{ env.REPO_DIR }}
           make -j$(nproc) || make -j1 V=s
 
-      - name: Generate Index and Repo
-        run: |
-          cd ${{ env.REPO_DIR }}
-          make package/index
-
       # 📦 prepara file release
       - name: Prepare release
         run: |
@@ -297,23 +292,36 @@ jobs:
           # 📑 3. INDICE PER IL ROUTER (Cruciale)
           # ==========================================
           # Cerchiamo il file packages.adb già generato da OpenWrt
-          INDEX_SOURCE=$(find "$SOURCE_DIR" -name "packages.adb" | head -n 1)
-
-          if [ -n "$INDEX_SOURCE" ]; then
-              echo "📑 Uso indice esistente: $INDEX_SOURCE"
-              cp "$INDEX_SOURCE" release/packages/packages.adb
-              # Compatibilità extra
-              cp "$INDEX_SOURCE" release/packages/APKINDEX.tar.gz 2>/dev/null || true
+          # 1. Troviamo dove sta l'indice (sappiamo che c'è dai log precedenti)
+          INDEX_PATH=$(find "$SOURCE_DIR" -name "packages.adb" | head -n 1)
+          
+          if [ -n "$INDEX_PATH" ]; then
+              echo "📑 Indice trovato in: $INDEX_PATH"
+              # Otteniamo la cartella che lo contiene
+              PKG_SRC_DIR=$(dirname "$INDEX_PATH")
+              
+              echo "🚚 Copio TUTTO il contenuto di $PKG_SRC_DIR..."
+              # Copiamo tutto quello che c'è nella cartella dell'indice (file .apk, .ipk, ecc.)
+              cp -v "$PKG_SRC_DIR"/* release/packages/ 2>/dev/null || true
+              
+              # Cerchiamo anche in altre possibili cartelle di pacchetti (feed generali)
+              echo "🔍 Cerco altri pacchetti sparsi..."
+              find "$SOURCE_DIR" -type f \( -name "*.apk" -o -name "*.ipk" \) -exec cp -v {} release/packages/ \; 2>/dev/null || true
           else
-              echo "⚠️ packages.adb non trovato, provo a rigenerarlo..."
-              cd release/packages
-              # Usa lo script interno se disponibile per creare l'indice
-              if [ -f "../../scripts/ipkg-make-index.sh" ]; then
-                  ../../scripts/ipkg-make-index.sh . > Packages
-                  gzip -f Packages
-              fi
-              cd ../..
+              echo "❌ ERRORE: packages.adb sparito!"
+              exit 1
           fi
+
+          # Controlliamo il risultato finale
+          COUNT=$(ls release/packages | wc -l)
+          echo "✅ Totale file in release/packages: $COUNT"
+
+          # ==========================================
+          # 📑 FIX PER IL ROUTER
+          # ==========================================
+          # Assicuriamoci che l'indice sia nella root della cartella pacchetti
+          cp "$INDEX_PATH" release/packages/packages.adb
+          cp "$INDEX_PATH" release/packages/APKINDEX.tar.gz 2>/dev/null || true
 
           # ==========================================
           # 📦 4. ARCHIVIO E VARIABILI
