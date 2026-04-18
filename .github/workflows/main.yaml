@@ -14,6 +14,8 @@ env:
   CONFIG_FILE: mt6000.config
   REPO_DIR: main
   BUILD_TYPE: main
+  BUILDER_REPO: builder_repo
+
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   # 🔍 JOB 1: Controlla se ci sono nuovi commit nel repo remoto
@@ -26,7 +28,7 @@ jobs:
       config_hash: ${{ steps.detect.outputs.config_hash }}
     steps:
       - name: Scarico il file per ${{ env.CONFIG_FILE }} controllare se è stato modificato
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           sparse-checkout: |
             ${{ env.CONFIG_FILE }}
@@ -95,6 +97,16 @@ jobs:
           TS=$(TZ='Europe/Rome' date +'%d-%m-%Y-%H%M')
           echo "ts=$TS" >> $GITHUB_OUTPUT
 
+      - name: Gerero Tag Name
+        id: set_tag
+        run: |
+          # Costruiamo la stringa
+          TAG="${{ env.BUILD_TYPE }}-${{ steps.timestamp.outputs.ts }}-${{ needs.check.outputs.branch }}"
+          # La esportiamo per gli step successivi nello STESSO job
+          echo "FINAL_TAG=$TAG" >> $GITHUB_ENV
+          # (Opzionale) La esportiamo come output se serve ad altri JOB
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
       # 🔧 installa dipendenze
       - name: Installa dipendenze
         run: |
@@ -119,7 +131,7 @@ jobs:
             ccache-${{ needs.check.outputs.branch }}-
 
       - name: Checkout Source ${{ needs.check.outputs.branch }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ env.REPO }}
           # Usa la variabile definita negli env:
