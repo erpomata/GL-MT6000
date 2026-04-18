@@ -14,6 +14,7 @@ env:
   CONFIG_FILE: mt6000.config
   REPO_DIR: snapshot
   BUILD_TYPE: snapshot
+
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   # 🔍 JOB 1: Controlla se ci sono nuovi commit nel repo remoto
@@ -24,6 +25,13 @@ jobs:
       commit: ${{ steps.detect.outputs.commit }}
       build: ${{ steps.detect.outputs.build }}
     steps:
+      - name: Scarico il file per ${{ env.CONFIG_FILE }} controllare se è stato modificato
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            ${{ env.CONFIG_FILE }}
+          sparse-checkout-cone-mode: false
+
       - name: Detect latest branch and commit
         id: detect
         env:
@@ -48,24 +56,39 @@ jobs:
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
 
+          # 📄 Calcola l'hash del tuo file .config (Assicurati che il file sia già scaricato/presente in questa fase)
+          # Se il tuo config si chiama diversamente o è in una cartella, aggiorna il percorso qui
+          if [ -f "${{ env.CONFIG_FILE }}" ]; then
+            CONFIG_HASH=$(sha256sum ${{ env.CONFIG_FILE }} | awk '{print $1}')
+          else
+            CONFIG_HASH="config_non_trovato"
+          fi
+          echo "config_hash=$CONFIG_HASH" >> $GITHUB_OUTPUT
+
           # 📦 Controlla se lo SHA è già menzionato nell'ultima release del TUO repo
           LAST_BODY=$(gh api repos/${{ github.repository }}/releases --jq ". | map(select(.tag_name | test(\"${{ env.BUILD_TYPE }}\"; \"i\"))) | .[0].body" 2>/dev/null || echo "")
 
-          if echo "$LAST_BODY" | grep -q "$COMMIT"; then
+          # 🔍 Verifica le presenze
+          COMMIT_MATCH=$(echo "$LAST_BODY" | grep -q "$COMMIT" && echo "yes" || echo "no")
+          CONFIG_MATCH=$(echo "$LAST_BODY" | grep -q "$CONFIG_HASH" && echo "yes" || echo "no")
+
+          if [ "$COMMIT_MATCH" = "yes" ] && [ "$CONFIG_MATCH" = "yes" ]; then
             echo "build=false" >> $GITHUB_OUTPUT
-            echo "✅ Nessun nuovo commit. Build saltata."
+            echo "✅ Nessun nuovo commit e .config invariato. Build saltata."
           else
             echo "build=true" >> $GITHUB_OUTPUT
-            echo "🚀 Nuovo commit rilevato: $COMMIT. Procedo alla build."
+            echo "🚀 Cambiamenti rilevati! Procedo alla build."
+            [ "$COMMIT_MATCH" = "no" ] && echo "  - Nuovo commit upstream: $COMMIT"
+            [ "$CONFIG_MATCH" = "no" ] && echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
           fi
 
   # 🏗️ JOB 2: Compilazione
   build:
     needs: check
-    if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.check.outputs.build == 'true' 
     runs-on: ubuntu-24.04-arm
     steps:
-      - name: Generate Timestamp
+      - name: Gerero il Timestamp
         id: timestamp
         run: |
           # Imposta il fuso orario di Roma
@@ -73,7 +96,7 @@ jobs:
           echo "ts=$TS" >> $GITHUB_OUTPUT
 
       # 🔧 installa dipendenze
-      - name: Install deps
+      - name: Installa dipendenze
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex g++ gawk \
@@ -123,8 +146,6 @@ jobs:
             # -v: mostra cosa sta facendo (verbose)
             # --delete: NON lo usiamo, così non cancelliamo la cache (dl, staging_dir)
             # --exclude='.git/': ignora la cartella Git dei sorgenti
-            
-            #rsync -av --exclude='.git/' "$TEMP_NAME/" ${{ env.REPO_DIR }}/
             rsync -aq "$TEMP_NAME/" ${{ env.REPO_DIR }}/
             
             # Eliminiamo la cartella temporanea
@@ -304,6 +325,7 @@ jobs:
             ### OpenWrt Build Info
             - **Branch:** `${{ needs.check.outputs.branch }}`
             - **Commit SHA:** `${{ needs.check.outputs.commit }}`
+            - **Config Hash:** `${{ steps.detect.outputs.config_hash }}`
             - **Date:** ${{ env.DATE }}
             - **Type:** ${{ env.BUILD_TYPE }}
             ---
