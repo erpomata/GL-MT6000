@@ -96,6 +96,16 @@ jobs:
           TS=$(TZ='Europe/Rome' date +'%d-%m-%Y-%H%M')
           echo "ts=$TS" >> $GITHUB_OUTPUT
 
+      - name: Gerero Tag Name
+        id: set_tag
+        run: |
+          # Costruiamo la stringa
+          TAG="${{ env.BUILD_TYPE }}-${{ steps.timestamp.outputs.ts }}-${{ needs.check.outputs.branch }}"
+          # La esportiamo per gli step successivi nello STESSO job
+          echo "FINAL_TAG=$TAG" >> $GITHUB_ENV
+          # (Opzionale) La esportiamo come output se serve ad altri JOB
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
       # 🔧 installa dipendenze
       - name: Installa dipendenze
         run: |
@@ -119,7 +129,7 @@ jobs:
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
 
-      - name: Checkout Source
+      - name: Checkout Source ${{ needs.check.outputs.branch }}
         uses: actions/checkout@v4
         with:
           repository: ${{ env.REPO }}
@@ -326,7 +336,7 @@ jobs:
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.BUILD_TYPE }}-${{ steps.timestamp.outputs.ts }}
+          tag_name: ${{ env.FINAL_TAG }}
           name: ${{ env.BUILD_TYPE == 'snapshot' && 'SNAPSHOT' || 'MAIN' }} - ${{ steps.timestamp.outputs.ts }}
           body: |
             ### OpenWrt Build Info
@@ -433,7 +443,7 @@ jobs:
             https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}/
 
             📦 **GitHub Release (Firmware e Log):**
-            https://github.com/${{ github.repository }}/releases/tag/${{ env.BUILD_TYPE }}-${{ steps.timestamp.outputs.ts }}
+            https://github.com/${{ github.repository }}/releases/tag/${{ env.FINAL_TAG }}
 
             Build ID: ${{ steps.timestamp.outputs.ts }}
             Commit: ${{ needs.check.outputs.commit }}
