@@ -218,6 +218,7 @@ jobs:
           sed -i '/CONFIG_VERSION_REPO/d' .config
           sed -i '/CONFIG_CCACHE/d' .config
           sed -i '/CONFIG_CCACHE_DIR/d' .config
+          sed -i '/CONFIG_PER_FEED_REPO/d' .config
 
           # Usiamo la data SOLO in VERSION_NUMBER per il nome del file
           echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}\"" >> .config
@@ -232,6 +233,8 @@ jobs:
           # Definiamo la sottocartella specifica
           SUBDIR="${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}"
           echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/$SUBDIR\"" >> .config
+
+          echo "CONFIG_PER_FEED_REPO=n" >> .config
 
           # --- OTTIMIZZAZIONE CACHE ---
           # Abilita ccache nel sistema di build
