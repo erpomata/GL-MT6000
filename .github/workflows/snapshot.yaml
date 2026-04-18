@@ -126,7 +126,8 @@ jobs:
           path: |
             ${{ env.REPO_DIR }}/dl
             ${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}
-          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
+          # Usiamo le variabili BUILDER_REPO e CONFIG_FILE per creare il percorso completo
+          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(format('{0}/{1}', env.BUILDER_REPO, env.CONFIG_FILE)) }}
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
 
