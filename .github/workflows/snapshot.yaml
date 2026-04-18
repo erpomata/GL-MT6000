@@ -259,84 +259,72 @@ jobs:
       - name: Prepare release
         run: |
           cd ${{ env.REPO_DIR }}
- 
+          
           DATE=$(date +%Y-%m-%d)
           COMMIT=${{ needs.check.outputs.commit }}
           SHORT=${COMMIT:0:7}
-          SOURCE_DIR=bin
+          SOURCE_DIR="bin"
           
+          # Creiamo le cartelle di destinazione pulite
           mkdir -p release/firmware
           mkdir -p release/packages
           
-          #echo "📂 Contenuto di: "${{ env.REPO_DIR }}
-          #ls -R || true
-          
+          echo "📂 Scansione di $SOURCE_DIR per firmware e pacchetti..."
 
-          # =========================
-          # 🔥 FIRMWARE (solo bin/targets)
-          # =========================
-
-          TARGETS_DIR=$(find "$SOURCE_DIR" -type d -name targets | head -n1)
-         
-          if [ -z "$TARGETS_DIR" ]; then
-            echo "❌ Directory targets non trovata sotto $SOURCE_DIR"
-            find "$SOURCE_DIR" -maxdepth 3 || true
-            exit 1
-          fi
-         
-          echo "📂 Uso TARGETS_DIR=$TARGETS_DIR"
-         
-          #FW_FILES=$(find "$TARGETS_DIR" -type f -name "*sysupgrade.bin")
-          FW_FILES=$(find "$TARGETS_DIR" -type f \( -name "*.bin" -o -name "*.fip" \))
-         
-          if [ -z "$FW_FILES" ]; then
-            echo "❌ Nessun firmware sysupgrade trovato!"
-            find "$TARGETS_DIR" -maxdepth 4 || true
-            exit 1
-          fi
-         
-          echo "✅ Firmware trovato:"
-          echo "$FW_FILES"
-         
-          # Copia firmware
-          echo "$FW_FILES" | while read -r fw; do
-            cp "$fw" release/firmware/
+          # ==========================================
+          # 🔥 1. FIRMWARE (Cerca ovunque sotto bin)
+          # ==========================================
+          # Cerchiamo file .bin e .fip ignorando la struttura delle cartelle
+          find "$SOURCE_DIR" -type f \( -name "*.bin" -o -name "*.fip" -o -name "*.sha256sum" -o -name "*.manifest" \) | while read -r file; do
+              echo "✅ Copio firmware: $(basename "$file")"
+              cp "$file" release/firmware/
           done
-         
-          # Copia checksum / manifest (se presenti)
-          find "$TARGETS_DIR" -type f \( -name "*.sha256*" -o -name "*.manifest" \) \
-            -exec cp {} release/firmware/ \; 2>/dev/null || true
 
-          # =========================
-          # 📦 PACKAGES (solo bin/packages)
-          # =========================
-
-          PKG_DIR=$(find "$SOURCE_DIR" -type d -path "*/packages/*" | head -n1)
+          # ==========================================
+          # 📦 2. PACKAGES (Appiattimento totale)
+          # ==========================================
+          # Invece di cercare la cartella, cerchiamo i file .adb o .ipk
+          # Questo risolve il problema della directory non trovata
+          COUNT_PKG=0
+          find "$SOURCE_DIR" -type f \( -name "*.adb" -o -name "*.ipk" \) | while read -r pkg; do
+              cp "$pkg" release/packages/
+              COUNT_PKG=$((COUNT_PKG + 1))
+          done
           
-          if [ -z "$PKG_DIR" ]; then
-            echo "❌ Directory packages non trovata sotto $SOURCE_DIR"
-            find "$SOURCE_DIR" -maxdepth 3 || true
-            exit 1
+          echo "📦 Pacchetti copiati: $COUNT_PKG"
+
+          # ==========================================
+          # 📑 3. INDICE PER IL ROUTER (Cruciale)
+          # ==========================================
+          # Cerchiamo il file packages.adb già generato da OpenWrt
+          INDEX_SOURCE=$(find "$SOURCE_DIR" -name "packages.adb" | head -n 1)
+
+          if [ -n "$INDEX_SOURCE" ]; then
+              echo "📑 Uso indice esistente: $INDEX_SOURCE"
+              cp "$INDEX_SOURCE" release/packages/packages.adb
+              # Compatibilità extra
+              cp "$INDEX_SOURCE" release/packages/APKINDEX.tar.gz 2>/dev/null || true
+          else
+              echo "⚠️ packages.adb non trovato, provo a rigenerarlo..."
+              cd release/packages
+              # Usa lo script interno se disponibile per creare l'indice
+              if [ -f "../../scripts/ipkg-make-index.sh" ]; then
+                  ../../scripts/ipkg-make-index.sh . > Packages
+                  gzip -f Packages
+              fi
+              cd ../..
           fi
-          
-          echo "📦 Copio pacchetti da: $PKG_DIR"
-          cp -r "$PKG_DIR"/* release/packages/
 
-          
-          # rigenera index opkg
-          cd release/packages
-          ../../scripts/ipkg-make-index.sh . > Packages
-          gzip -f Packages
-          cd ../..
-          
-          # =========================
-          # 📦 ARCHIVIO
-          # =========================
+          # ==========================================
+          # 📦 4. ARCHIVIO E VARIABILI
+          # ==========================================
           cd release
           tar -czf packages.tar.gz packages
           
+          # Esportiamo le variabili per gli step successivi
           echo "DATE=$DATE" >> $GITHUB_ENV
           echo "SHORT=$SHORT" >> $GITHUB_ENV
+          echo "✅ Preparazione completata con successo"
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
