@@ -14,6 +14,7 @@ env:
   CONFIG_FILE: mt6000.config
   REPO_DIR: snapshot
   BUILD_TYPE: snapshot
+  BUILDER_REPO: builder_repo
 
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
@@ -85,7 +86,7 @@ jobs:
   # 🏗️ JOB 2: Compilazione
   build:
     needs: check
-    if: needs.check.outputs.build == 'true' 
+    if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Gerero il Timestamp
@@ -106,7 +107,7 @@ jobs:
       - name: Checkout Helper Repo (Patch & Files)
         uses: actions/checkout@v5
         with:
-          path: "builder_repo"
+          path: "${{ env.BUILDER_REPO }}"
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -163,29 +164,35 @@ jobs:
 
       - name: Apply Config and Versioning
         run: |
-          cp builder_repo/${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
-          cp builder_repo/.github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
+          cp ${{ env.BUILDER_REPO }}/${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
+          cp ${{ env.BUILDER_REPO }}/.github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
 
           # inizializza variabile
           PATCH_STATUS="applied"
           # Patching dei file personali
-          rm -rf builder_repo/.git builder_repo/.github
-          for file in $(grep -rl "XXXXXX/YYYYYY" builder_repo/ || true); do
+          rm -rf ${{ env.BUILDER_REPO }}/.git ${{ env.BUILDER_REPO }}/.github
+          for file in $(grep -rl "XXXXXX/YYYYYY" ${{ env.BUILDER_REPO }}/ || true); do
               sed -i "s|XXXXXX/YYYYYY|${{ github.repository }}|g" "$file"
           done
 
           # Applicazione Patch AttendedSysupgrade
-          if [ -f builder_repo/attendedsysupgrade-with-GitHub.patch ]; then
-              cd ${{ env.REPO_DIR }}
-              patch -p1 < ../builder_repo/attendedsysupgrade-with-GitHub.patch || echo "Patch fallita o già applicata"
-              cd ..
+          if [ -f ${{ env.BUILDER_REPO }}/attendedsysupgrade-with-GitHub.patch ]; then
+            cd ${{ env.REPO_DIR }}
+            # Proviamo ad applicare la patch
+            if ! patch -p1 < ../${{ env.BUILDER_REPO }}/attendedsysupgrade-with-GitHub.patch; then
+              echo "❌ Errore: Patch fallita (conflitto o già applicata)"
+              PATCH_STATUS="failed"
+            fi
+            cd ..
           else
-            echo "⚠️ Patch non trovata, procedo comunque"
+            echo "⚠️ Patch non trovata in ${{ env.BUILDER_REPO }}/, procedo comunque"
             PATCH_STATUS="missing"
-          fi
+          fi 
+
+          echo "PATCH_STATUS=$PATCH_STATUS" >> $GITHUB_ENV
 
           # Spostamento Files
-          [ -d builder_repo/files ] && mv builder_repo/files ${{ env.REPO_DIR }}/
+          [ -d ${{ env.BUILDER_REPO }}/files ] && mv ${{ env.BUILDER_REPO }}/files ${{ env.REPO_DIR }}/
           chmod 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt 2>/dev/null || true
           chmod 755 ${{ env.REPO_DIR }}/files/www/cgi-bin/github_* 2>/dev/null || true
 
