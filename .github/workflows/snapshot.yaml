@@ -28,7 +28,7 @@ jobs:
       config_hash: ${{ steps.detect.outputs.config_hash }}
     steps:
       - name: Scarico il file per ${{ env.CONFIG_FILE }} controllare se è stato modificato
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           sparse-checkout: |
             ${{ env.CONFIG_FILE }}
@@ -131,7 +131,7 @@ jobs:
             ccache-${{ needs.check.outputs.branch }}-
 
       - name: Checkout Source ${{ needs.check.outputs.branch }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ env.REPO }}
           # Usa la variabile definita negli env:
