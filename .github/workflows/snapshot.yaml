@@ -90,8 +90,6 @@ jobs:
         with:
           path: |
             ${{ env.REPO_DIR }}/dl
-            #${{ env.REPO_DIR }}/feeds
-            #${{ env.REPO_DIR }}/staging_dir
             ${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}
           key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}
           restore-keys: |
@@ -300,8 +298,6 @@ jobs:
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          #tag_name: ${{ env.BUILD_TYPE }}-${{ env.DATE }}-${{ needs.check.outputs.commit }}
-          #name: ${{ env.BUILD_TYPE == 'snapshot' && 'SNAPSHOT' || 'MAIN' }} - ${{ env.DATE }}
           tag_name: ${{ env.BUILD_TYPE }}-${{ steps.timestamp.outputs.ts }}
           name: ${{ env.BUILD_TYPE == 'snapshot' && 'SNAPSHOT' || 'MAIN' }} - ${{ steps.timestamp.outputs.ts }}
           body: |
@@ -320,41 +316,6 @@ jobs:
             ${{ env.REPO_DIR }}/${{ env.BUILD_TYPE }}.yaml
           env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      #- name: Deploy to GitHub Pages
-      #  run: |
-      #    mkdir -p public/${{ env.BUILD_TYPE }}
-      #    # Copia tutto quello che abbiamo preparato in release/packages
-      #    #cp -rv ${{ env.REPO_DIR }}/release/packages/* public/${{ env.BUILD_TYPE }}/
-      #    find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
-      #    find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} public/${{ env.BUILD_TYPE }}/ \;
-
-      #    # Trova l'indice dei pacchetti e nominalo come vuole il router (APKINDEX.tar.gz)
-      #    # Cerchiamo il file .adb generato dalla build
-      #    INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
-         
-      #    if [ -f "$INDEX_FILE" ]; then
-      #      echo "✅ Indice trovato, lo copio come APKINDEX.tar.gz"
-      #      cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/APKINDEX.tar.gz
-      #      # Copialo anche con il vecchio nome per compatibilità
-      #      cp "$INDEX_FILE" public/${{ env.BUILD_TYPE }}/packages.adb
-      #    else
-      #      echo "❌ ERRORE: Indice packages.adb non trovato!"
-      #      exit 1
-      #    fi
-
-      #    # Genera Index HTML
-      #    cd public/${{ env.BUILD_TYPE }}
-      #    # Usiamo BUILD_TYPE nel titolo per coerenza
-      #    echo "<html><head><title>Index of ${{ env.BUILD_TYPE }}</title></head><body>" > index.html
-      #    echo "<h1>OpenWrt Packages - ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> index.html
-          
-      #    # Generiamo la lista file in modo pulito
-      #    ls -1 | grep -v "index.html" | while read f; do
-      #      echo "<li><a href=\"$f\">$f</a></li>" >> index.html
-      #    done
-          
-      #    echo "</ul><hr><p>Generated on $(date)</p></body></html>" >> index.html
 
       - name: Deploy to GitHub Pages
         run: |
