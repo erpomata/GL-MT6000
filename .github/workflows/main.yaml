@@ -23,6 +23,7 @@ jobs:
       branch: ${{ steps.detect.outputs.branch }}
       commit: ${{ steps.detect.outputs.commit }}
       build: ${{ steps.detect.outputs.build }}
+      config_hash: ${{ steps.detect.outputs.config_hash }}
     steps:
       - name: Scarico il file per ${{ env.CONFIG_FILE }} controllare se è stato modificato
         uses: actions/checkout@v4
