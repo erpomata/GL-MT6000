@@ -24,6 +24,13 @@ jobs:
       commit: ${{ steps.detect.outputs.commit }}
       build: ${{ steps.detect.outputs.build }}
     steps:
+      - name: Scarico il file per ${{ env.CONFIG_FILE }} controllare se è stato modificato
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            ${{ env.CONFIG_FILE }}
+          sparse-checkout-cone-mode: false
+
       - name: Detect latest branch and commit
         id: detect
         env:
@@ -31,8 +38,16 @@ jobs:
         run: |
           set -e
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          # 🔎 Trova l'ultimo branch next-* (escludendo test e beta)
+          BRANCH=$(git ls-remote https://github.com/${{ env.REPO }}.git "refs/heads/next-*" \
+            | sed -e 's|.*refs/heads/||' \
+            | grep -viE 'test|beta' \
+            | sort -V | tail -n1)
 
-          BRANCH="main"
+          if [ -z "$BRANCH" ]; then
+            echo "Errore critico: BRANCH non impostato."
+            exit 1
+          fi
 
           # 🧠 Recupera lo SHA del commit
           COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git refs/heads/$BRANCH | awk '{print $1}')
@@ -40,15 +55,30 @@ jobs:
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
 
+          # 📄 Calcola l'hash del tuo file .config (Assicurati che il file sia già scaricato/presente in questa fase)
+          # Se il tuo config si chiama diversamente o è in una cartella, aggiorna il percorso qui
+          if [ -f "${{ env.CONFIG_FILE }}" ]; then
+            CONFIG_HASH=$(sha256sum ${{ env.CONFIG_FILE }} | awk '{print $1}')
+          else
+            CONFIG_HASH="config_non_trovato"
+          fi
+          echo "config_hash=$CONFIG_HASH" >> $GITHUB_OUTPUT
+
           # 📦 Controlla se lo SHA è già menzionato nell'ultima release del TUO repo
           LAST_BODY=$(gh api repos/${{ github.repository }}/releases --jq ". | map(select(.tag_name | test(\"${{ env.BUILD_TYPE }}\"; \"i\"))) | .[0].body" 2>/dev/null || echo "")
 
-          if echo "$LAST_BODY" | grep -q "$COMMIT"; then
+          # 🔍 Verifica le presenze
+          COMMIT_MATCH=$(echo "$LAST_BODY" | grep -q "$COMMIT" && echo "yes" || echo "no")
+          CONFIG_MATCH=$(echo "$LAST_BODY" | grep -q "$CONFIG_HASH" && echo "yes" || echo "no")
+
+          if [ "$COMMIT_MATCH" = "yes" ] && [ "$CONFIG_MATCH" = "yes" ]; then
             echo "build=false" >> $GITHUB_OUTPUT
-            echo "✅ Nessun nuovo commit. Build saltata."
+            echo "✅ Nessun nuovo commit e .config invariato. Build saltata."
           else
             echo "build=true" >> $GITHUB_OUTPUT
-            echo "🚀 Nuovo commit rilevato: $COMMIT. Procedo alla build."
+            echo "🚀 Cambiamenti rilevati! Procedo alla build."
+            [ "$COMMIT_MATCH" = "no" ] && echo "  - Nuovo commit upstream: $COMMIT"
+            [ "$CONFIG_MATCH" = "no" ] && echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
           fi
 
   # 🏗️ JOB 2: Compilazione
@@ -57,7 +87,7 @@ jobs:
     if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     steps:
-      - name: Generate Timestamp
+      - name: Genero il Timestamp
         id: timestamp
         run: |
           # Imposta il fuso orario di Roma
@@ -65,7 +95,7 @@ jobs:
           echo "ts=$TS" >> $GITHUB_OUTPUT
 
       # 🔧 installa dipendenze
-      - name: Install deps
+      - name: Installa dipendenze
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex g++ gawk \
@@ -75,7 +105,7 @@ jobs:
       - name: Checkout Helper Repo (Patch & Files)
         uses: actions/checkout@v5
         with:
-          path: "builder_repo"
+          path: "${{ env.BUILDER_REPO }}"
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -87,7 +117,7 @@ jobs:
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
 
-      - name: Checkout Source
+      - name: Checkout Source ${{ needs.check.outputs.branch }}
         uses: actions/checkout@v4
         with:
           repository: ${{ env.REPO }}
@@ -115,8 +145,6 @@ jobs:
             # -v: mostra cosa sta facendo (verbose)
             # --delete: NON lo usiamo, così non cancelliamo la cache (dl, staging_dir)
             # --exclude='.git/': ignora la cartella Git dei sorgenti
-            
-            #rsync -av --exclude='.git/' "$TEMP_NAME/" ${{ env.REPO_DIR }}/
             rsync -aq "$TEMP_NAME/" ${{ env.REPO_DIR }}/
             
             # Eliminiamo la cartella temporanea
@@ -134,29 +162,35 @@ jobs:
 
       - name: Apply Config and Versioning
         run: |
-          cp builder_repo/${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
-          cp builder_repo/.github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
+          cp ${{ env.BUILDER_REPO }}/${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
+          cp ${{ env.BUILDER_REPO }}/.github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
 
           # inizializza variabile
           PATCH_STATUS="applied"
           # Patching dei file personali
-          rm -rf builder_repo/.git builder_repo/.github
-          for file in $(grep -rl "XXXXXX/YYYYYY" builder_repo/ || true); do
+          rm -rf ${{ env.BUILDER_REPO }}/.git ${{ env.BUILDER_REPO }}/.github
+          for file in $(grep -rl "XXXXXX/YYYYYY" ${{ env.BUILDER_REPO }}/ || true); do
               sed -i "s|XXXXXX/YYYYYY|${{ github.repository }}|g" "$file"
           done
 
           # Applicazione Patch AttendedSysupgrade
-          if [ -f builder_repo/attendedsysupgrade-with-GitHub.patch ]; then
-              cd ${{ env.REPO_DIR }}
-              patch -p1 < ../builder_repo/attendedsysupgrade-with-GitHub.patch || echo "Patch fallita o già applicata"
-              cd ..
+          if [ -f ${{ env.BUILDER_REPO }}/attendedsysupgrade-with-GitHub.patch ]; then
+            cd ${{ env.REPO_DIR }}
+            # Proviamo ad applicare la patch
+            if ! patch -p1 < ../${{ env.BUILDER_REPO }}/attendedsysupgrade-with-GitHub.patch; then
+              echo "❌ Errore: Patch fallita (conflitto o già applicata)"
+              PATCH_STATUS="failed"
+            fi
+            cd ..
           else
-            echo "⚠️ Patch non trovata, procedo comunque"
+            echo "⚠️ Patch non trovata in ${{ env.BUILDER_REPO }}/, procedo comunque"
             PATCH_STATUS="missing"
-          fi
+          fi 
+
+          echo "PATCH_STATUS=$PATCH_STATUS" >> $GITHUB_ENV
 
           # Spostamento Files
-          [ -d builder_repo/files ] && mv builder_repo/files ${{ env.REPO_DIR }}/
+          [ -d ${{ env.BUILDER_REPO }}/files ] && mv ${{ env.BUILDER_REPO }}/files ${{ env.REPO_DIR }}/
           chmod 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt 2>/dev/null || true
           chmod 755 ${{ env.REPO_DIR }}/files/www/cgi-bin/github_* 2>/dev/null || true
 
@@ -290,12 +324,13 @@ jobs:
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.BUILD_TYPE }}-${{ steps.timestamp.outputs.ts }}
+          tag_name: ${{ env.FINAL_TAG }}
           name: ${{ env.BUILD_TYPE == 'snapshot' && 'SNAPSHOT' || 'MAIN' }} - ${{ steps.timestamp.outputs.ts }}
           body: |
             ### OpenWrt Build Info
             - **Branch:** `${{ needs.check.outputs.branch }}`
             - **Commit SHA:** `${{ needs.check.outputs.commit }}`
+            - **Config Hash:** `${{ steps.detect.outputs.config_hash }}`
             - **Date:** ${{ env.DATE }}
             - **Type:** ${{ env.BUILD_TYPE }}
             ---
@@ -396,7 +431,7 @@ jobs:
             https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}/
 
             📦 **GitHub Release (Firmware e Log):**
-            https://github.com/${{ github.repository }}/releases/tag/${{ env.BUILD_TYPE }}-${{ steps.timestamp.outputs.ts }}
+            https://github.com/${{ github.repository }}/releases/tag/${{ env.FINAL_TAG }}
 
             Build ID: ${{ steps.timestamp.outputs.ts }}
             Commit: ${{ needs.check.outputs.commit }}
