@@ -89,7 +89,7 @@ jobs:
     if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     steps:
-      - name: Gerero il Timestamp
+      - name: Genero il Timestamp
         id: timestamp
         run: |
           # Imposta il fuso orario di Roma
