@@ -15,7 +15,7 @@ env:
   REPO_DIR: main
   BUILD_TYPE: main
   BUILDER_REPO: builder_repo
-
+  NUM_RELEASE_TENUTE: 10
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   # 🔍 JOB 1: Controlla se ci sono nuovi commit nel repo remoto
@@ -211,6 +211,9 @@ jobs:
           sed -i '/CONFIG_CCACHE/d' .config
           sed -i '/CONFIG_CCACHE_DIR/d' .config
           sed -i '/CONFIG_PER_FEED_REPO/d' .config
+          sed -i '/CONFIG_FEED_ALL_EXTRAS/d' .config
+          sed -i '/CONFIG_VERSION_PER_ARCH/d' .config
+          sed -i '/CONFIG_VERSION_ALL_DIST_REPOS/d' .config
 
           # Usiamo la data SOLO in VERSION_NUMBER per il nome del file
           echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}\"" >> .config
@@ -228,6 +231,10 @@ jobs:
 
           echo "CONFIG_PER_FEED_REPO=n" >> .config
 
+          echo "CONFIG_FEED_ALL_EXTRAS=y" >> .config
+          echo "CONFIG_VERSION_PER_ARCH=n" >> .config
+          echo "CONFIG_VERSION_ALL_DIST_REPOS=n" >> .config
+
           # --- OTTIMIZZAZIONE CACHE ---
           # Abilita ccache nel sistema di build
           echo "CONFIG_CCACHE=y" >> .config
@@ -236,6 +243,19 @@ jobs:
           # ----------------------------
 
           make defconfig
+
+      - name: Patch APK Feed Sources
+        run: |
+          cd ${{ env.REPO_DIR }}
+          # 1. Puliamo la riga che aggiunge il timestamp e il percorso target
+          # Trasformiamo la riga in un semplice echo del Repo URL
+          sed -i "s|echo '%U/\$(DATE)_\$(VERSION_CODE)_\$(BRANCH)/targets/%S/packages/packages.adb'|echo '%U/packages.adb'|g" include/feeds.mk
+        
+          # 2. (Opzionale) Se vuoi eliminare anche i feed ufficiali (base, luci, etc.) 
+          # che usano OWRT_LINK, puoi commentare quelle righe o svuotarle
+          sed -i "s|echo '\$(OWRT_LINK)/%A/base/packages.adb'|# echo no-official-base|g" include/feeds.mk
+          
+          echo "✅ include/feeds.mk patchato con successo!"
 
       - name: Build Firmware
         run: |
@@ -327,7 +347,7 @@ jobs:
           echo "✅ Preparazione completata con successo"
 
       - name: Publish Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3.0.0
         with:
           tag_name: ${{ env.FINAL_TAG }}
           name: ${{ env.FINAL_TAG }}
@@ -346,8 +366,6 @@ jobs:
             ${{ env.REPO_DIR }}/release/packages.tar.gz
             ${{ env.REPO_DIR }}/.config
             ${{ env.REPO_DIR }}/${{ env.BUILD_TYPE }}.yaml
-          env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy to GitHub Pages
         run: |
@@ -402,7 +420,7 @@ jobs:
           echo "</ul><p><a href='../'>.. Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
 
       - name: Publish Pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@v4.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
@@ -410,9 +428,11 @@ jobs:
 
       - name: Clean Old Releases
         run: |
+          # Calcoliamo il punto di partenza per tail (N + 1)
+          TAIL_START=$((NUM_RELEASE_TENUTE + 1))
           gh api repos/${{ github.repository }}/releases \
             | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | "\(.id) \(.tag_name)"' \
-            | tail -n +11 | while read id tag; do
+            | tail -n +$TAIL_START | while read id tag; do
                 gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
                 gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
               done
@@ -455,5 +475,5 @@ jobs:
           from: OpenWrt CI <${{ secrets.MAIL_USER }}>
 
       - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
+        uses: mxschmitt/action-tmate@v3.23
         if: failure()
