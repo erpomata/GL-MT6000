@@ -254,6 +254,7 @@ jobs:
 
       - name: Patch APK Feed Sources
         run: |
+          cd ${{ env.REPO_DIR }}
           # 1. Puliamo la riga che aggiunge il timestamp e il percorso target
           # Trasformiamo la riga in un semplice echo del Repo URL
           sed -i "s|echo '%U/\$(DATE)_\$(VERSION_CODE)_\$(BRANCH)/targets/%S/packages/packages.adb'|echo '%U/packages.adb'|g" include/feeds.mk
