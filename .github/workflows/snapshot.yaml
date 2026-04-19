@@ -261,7 +261,7 @@ jobs:
         
           # 2. (Opzionale) Se vuoi eliminare anche i feed ufficiali (base, luci, etc.) 
           # che usano OWRT_LINK, puoi commentare quelle righe o svuotarle
-          sed -i "s|echo '\$(OWRT_LINK)/%A/base/packages.adb'|# echo no-official-base|g" include/feeds.mk
+          #sed -i "s|echo '\$(OWRT_LINK)/%A/base/packages.adb'|# echo no-official-base|g" include/feeds.mk
           
           echo "✅ include/feeds.mk patchato con successo!"
 
