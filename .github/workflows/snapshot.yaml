@@ -354,7 +354,7 @@ jobs:
           echo "✅ Preparazione completata con successo"
 
       - name: Publish Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3.0.0
         with:
           tag_name: ${{ env.FINAL_TAG }}
           name: ${{ env.FINAL_TAG }}
@@ -373,8 +373,6 @@ jobs:
             ${{ env.REPO_DIR }}/release/packages.tar.gz
             ${{ env.REPO_DIR }}/.config
             ${{ env.REPO_DIR }}/${{ env.BUILD_TYPE }}.yaml
-          env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy to GitHub Pages
         run: |
@@ -429,7 +427,7 @@ jobs:
           echo "</ul><p><a href='../'>.. Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
 
       - name: Publish Pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@v4.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
@@ -441,7 +439,7 @@ jobs:
           TAIL_START=$((NUM_RELEASE_TENUTE + 1))
           gh api repos/${{ github.repository }}/releases \
             | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | "\(.id) \(.tag_name)"' \
-            | tail -n +$TAIL_START while read id tag; do
+            | tail -n +$TAIL_START | while read id tag; do
                 gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
                 gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
               done
@@ -484,5 +482,5 @@ jobs:
           from: OpenWrt CI <${{ secrets.MAIL_USER }}>
 
       - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
+        uses: mxschmitt/action-tmate@v3.23
         if: failure()
