@@ -41,16 +41,8 @@ jobs:
         run: |
           set -e
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-          # 🔎 Trova l'ultimo branch next-* (escludendo test e beta)
-          BRANCH=$(git ls-remote https://github.com/${{ env.REPO }}.git "refs/heads/next-*" \
-            | sed -e 's|.*refs/heads/||' \
-            | grep -viE 'test|beta' \
-            | sort -V | tail -n1)
 
-          if [ -z "$BRANCH" ]; then
-            echo "Errore critico: BRANCH non impostato."
-            exit 1
-          fi
+          BRANCH=main
 
           # 🧠 Recupera lo SHA del commit
           COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git refs/heads/$BRANCH | awk '{print $1}')
