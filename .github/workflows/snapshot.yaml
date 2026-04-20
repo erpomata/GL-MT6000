@@ -113,7 +113,20 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential clang flex g++ gawk \
           gettext git libncurses-dev libssl-dev python3-setuptools rsync \
-          unzip zlib1g-dev file wget curl ccache jq swig golang-go
+          unzip zlib1g-dev file wget curl ccache jq swig
+          sudo apt-get purge golang*
+          sudo apt autoremove -y && sudo apt clean -y
+
+      - name: Setup Go (bootstrap)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.6'
+          check-latest: true
+          
+
+      - name: Verifica Go
+        run: |
+          go version
 
       - name: Checkout Helper Repo (Patch & Files)
         uses: actions/checkout@v5
