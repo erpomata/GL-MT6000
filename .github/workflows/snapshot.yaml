@@ -255,6 +255,7 @@ jobs:
 
       - name: Setup Go and Configure
         run: |
+          cd ${{ env.REPO_DIR }}
           # 1. Recupera il percorso di Go installato dall'action precedente
           GOROOT_PATH=$(go env GOROOT)
           echo "Using GOROOT: $GOROOT_PATH"
