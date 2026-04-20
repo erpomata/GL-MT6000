@@ -131,6 +131,7 @@ jobs:
       - name: Checkout Helper Repo (Patch & Files)
         uses: actions/checkout@v5
         with:
+          ref: netbird-tailascale
           path: "${{ env.BUILDER_REPO }}"
 
       - name: Cache ccache
