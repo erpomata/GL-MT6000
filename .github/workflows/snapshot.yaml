@@ -15,7 +15,7 @@ env:
   REPO_DIR: snapshot
   BUILD_TYPE: snapshot
   BUILDER_REPO: builder_repo
-
+  NUM_RELEASE_TENUTE: 10
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   # 🔍 JOB 1: Controlla se ci sono nuovi commit nel repo remoto
@@ -418,15 +418,54 @@ jobs:
           keep_files: true
 
       - name: Clean Old Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Calcoliamo il punto di partenza per tail (N + 1)
+          TAIL_START=$((NUM_RELEASE_TENUTE + 1))
           gh api repos/${{ github.repository }}/releases \
             | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | "\(.id) \(.tag_name)"' \
-            | tail -n +11 | while read id tag; do
+            | tail -n +$TAIL_START | while read id tag; do
                 gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
                 gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
               done
+          
+      - name: Cleanup gh-pages for deleted releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+   
+          echo "📦 Recupero release ancora presenti..."
+          gh api repos/${{ github.repository }}/releases \
+            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .tag_name' \
+            | sed -E 's/.*-([0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{4}).*/\1/' \
+            > /tmp/keep_snapshots.txt
+   
+          echo "✅ Snapshot da TENERE:"
+          cat /tmp/keep_snapshots.txt || true
+   
+          git fetch origin gh-pages
+          git checkout gh-pages
+   
+          for dir in */ ; do
+            snap="${dir%/}"
+   
+            if grep -Fxq "$snap" /tmp/keep_snapshots.txt; then
+              echo "✅ Keeping gh-pages/$snap"
+            else
+              echo "🗑️  Removing gh-pages/$snap (release removed)"
+              rm -rf "$dir"
+            fi
+          done
+   
+          if git status --porcelain | grep .; then
+            git add -A
+            git commit -m "gh-pages: cleanup data for deleted releases"
+            git push origin gh-pages
+          else
+            echo "✅ gh-pages già allineato"
+          fi
 
       # 📧 invio email in caso di successo
       - name: Send email
