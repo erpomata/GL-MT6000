@@ -286,6 +286,7 @@ jobs:
       - name: Build Firmware
         run: |
           cd ${{ env.REPO_DIR }}
+          make package/feeds/packages/golang1.26/host/compile -j1 V=s
           make -j$(nproc) || make -j1 V=s
 
       # 📦 prepara file release
