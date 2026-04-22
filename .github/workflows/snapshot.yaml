@@ -48,10 +48,10 @@ jobs:
           echo "$BRANCH_LIST"
           echo "--------------------------------------------"
 
-          BRANCH=$(echo "$BRANCH_LIST" | \
-                   grep "refs/heads/next-" | \
+B         RANCH=$(echo "$BRANCH_LIST" | \
                    sed 's|.*refs/heads/||' | \
-                   grep -viE 'test|beta' | \
+                   grep "^next-" | \
+                   grep -vE '\.b[0-9]|test|beta' | \
                    sort -V | tail -n1)
 
           if [ -z "$BRANCH" ]; then
