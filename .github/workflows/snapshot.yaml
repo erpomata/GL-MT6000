@@ -48,7 +48,7 @@ jobs:
           echo "$BRANCH_LIST"
           echo "--------------------------------------------"
 
-B         RANCH=$(echo "$BRANCH_LIST" | \
+          BRANCH=$(echo "$BRANCH_LIST" | \
                    sed 's|.*refs/heads/||' | \
                    grep "^next-" | \
                    grep -vE '\.b[0-9]|test|beta' | \
