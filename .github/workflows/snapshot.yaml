@@ -89,9 +89,18 @@ jobs:
           else
             echo "build=true" >> $GITHUB_OUTPUT
             echo "🚀 Cambiamenti rilevati! Procedo alla build."
-            [ "$COMMIT_MATCH" = "no" ] && echo "  - Nuovo commit upstream: $COMMIT"
-            [ "$CONFIG_MATCH" = "no" ] && echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
+            
+            # Usa if espliciti invece delle scorciatoie && per evitare errori con set -e
+            if [ "$COMMIT_MATCH" = "no" ]; then
+              echo "  - Nuovo commit upstream: $COMMIT"
+            fi
+            
+            if [ "$CONFIG_MATCH" = "no" ]; then
+              echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
+            fi
           fi
+
+          exit 0
 
   # 🏗️ JOB 2: Compilazione
   build:
