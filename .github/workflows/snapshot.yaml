@@ -42,7 +42,14 @@ jobs:
           set -e
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
           # 🔎 Trova l'ultimo branch next-* (escludendo test e beta)
-          BRANCH=$(git ls-remote --heads https://github.com/pesa1234/openwrt.git 'next-*' | \
+          BRANCH_LIST=$(git ls-remote --heads https://github.com/pesa1234/openwrt.git)
+          
+          echo "--- DEBUG: Lista completa ricevuta da Git ---"
+          echo "$BRANCH_LIST"
+          echo "--------------------------------------------"
+
+          BRANCH=$(echo "$BRANCH_LIST" | \
+                   grep "refs/heads/next-" | \
                    sed 's|.*refs/heads/||' | \
                    grep -viE 'test|beta' | \
                    sort -V | tail -n1)
