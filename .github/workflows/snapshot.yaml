@@ -429,6 +429,14 @@ jobs:
                 gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
                 gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
               done
+              
+
+      - name: Checkout gh-pages only
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+
           
       - name: Cleanup gh-pages for deleted releases
         env:
