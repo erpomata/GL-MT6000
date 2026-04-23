@@ -495,7 +495,7 @@ jobs:
               echo "🗑️ Removing $snap"
               rm -rf "$snap"
             fi
-        done
+          done
 
    
           if git status --porcelain | grep .; then
