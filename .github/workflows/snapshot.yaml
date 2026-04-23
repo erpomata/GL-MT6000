@@ -42,13 +42,22 @@ jobs:
           set -e
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
           # 🔎 Trova l'ultimo branch next-* (escludendo test e beta)
-          BRANCH=$(git ls-remote https://github.com/${{ env.REPO }}.git "refs/heads/next-*" \
-            | sed -e 's|.*refs/heads/||' \
-            | grep -viE 'test|beta' \
-            | sort -V | tail -n1)
+          BRANCH_LIST=$(git ls-remote --heads https://github.com/pesa1234/openwrt.git)
+          
+          echo "--- DEBUG: Lista completa ricevuta da Git ---"
+          echo "$BRANCH_LIST"
+          echo "--------------------------------------------"
+
+          BRANCH=$(echo "$BRANCH_LIST" | \
+                   sed 's|.*refs/heads/||' | \
+                   grep "^next-" | \
+                   grep -vE '\.b[0-9]|test|beta' | \
+                   sort -V | tail -n1)
 
           if [ -z "$BRANCH" ]; then
-            echo "Errore critico: BRANCH non impostato."
+            echo "❌ Errore critico: BRANCH non trovato."
+            # Debug: vediamo cosa risponde git senza filtri
+            git ls-remote --heads https://github.com/pesa1234/openwrt.git
             exit 1
           fi
 
@@ -80,9 +89,18 @@ jobs:
           else
             echo "build=true" >> $GITHUB_OUTPUT
             echo "🚀 Cambiamenti rilevati! Procedo alla build."
-            [ "$COMMIT_MATCH" = "no" ] && echo "  - Nuovo commit upstream: $COMMIT"
-            [ "$CONFIG_MATCH" = "no" ] && echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
+            
+            # Usa if espliciti invece delle scorciatoie && per evitare errori con set -e
+            if [ "$COMMIT_MATCH" = "no" ]; then
+              echo "  - Nuovo commit upstream: $COMMIT"
+            fi
+            
+            if [ "$CONFIG_MATCH" = "no" ]; then
+              echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
+            fi
           fi
+
+          exit 0
 
   # 🏗️ JOB 2: Compilazione
   build:
@@ -121,7 +139,7 @@ jobs:
           path: "${{ env.BUILDER_REPO }}"
 
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.5
         with:
           path: |
             ${{ env.REPO_DIR }}/dl
