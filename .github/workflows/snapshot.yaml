@@ -486,12 +486,16 @@ jobs:
           done
    
           if git status --porcelain | grep .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
             git add -A
             git commit -m "gh-pages: cleanup data for deleted releases"
             git push origin gh-pages
           else
             echo "✅ gh-pages già allineato"
           fi
+
 
       # 📧 invio email in caso di successo
       - name: Send email
