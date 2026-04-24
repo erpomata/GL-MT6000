@@ -343,8 +343,8 @@ jobs:
             ### OpenWrt Build Info
             - **Branch:** `${{ needs.check.outputs.branch }}`
             - **Commit SHA:** `${{ needs.check.outputs.commit }}`
-            - **Config Hash:** `${{ needs.check.outputs.config_hash }}`
-            - **Date:** ${{ env.DATE }}
+            - **${{ env.CONFIG_FILE }}:** `${{ needs.check.outputs.config_hash }}`
+            - **Date:** ${{ env.TS }}
             - **Type:** ${{ env.BUILD_TYPE }}
             ---
             📦 **Sito per i pacchetti:**
@@ -371,7 +371,7 @@ jobs:
 
           # 2. Copia dei file (Firmware e Pacchetti)
           find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
-          find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} "$TARGET_PATH/" \;
+          #find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} "$TARGET_PATH/" \;
 
           # 3. Gestione Indice APK per il router
           INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
