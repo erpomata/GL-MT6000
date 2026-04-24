@@ -42,7 +42,7 @@ jobs:
           set -e
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
 
-          BRANCH=main
+          BRANCH=${{ env.REPO_DIR }}
 
           # 🧠 Recupera lo SHA del commit
           COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git refs/heads/$BRANCH | awk '{print $1}')
