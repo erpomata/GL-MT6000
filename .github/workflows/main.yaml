@@ -41,8 +41,25 @@ jobs:
         run: |
           set -e
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          # 🔎 Trova l'ultimo branch next-* (escludendo test e beta)
+          BRANCH_LIST=$(git ls-remote --heads https://github.com/pesa1234/openwrt.git)
+          
+          echo "--- DEBUG: Lista completa ricevuta da Git ---"
+          echo "$BRANCH_LIST"
+          echo "--------------------------------------------"
 
-          BRANCH=main
+          BRANCH=$(echo "$BRANCH_LIST" | \
+                   sed 's|.*refs/heads/||' | \
+                   grep "^next-" | \
+                   grep -vE '\.b[0-9]|test|beta' | \
+                   sort -V | tail -n1)
+
+          if [ -z "$BRANCH" ]; then
+            echo "❌ Errore critico: BRANCH non trovato."
+            # Debug: vediamo cosa risponde git senza filtri
+            git ls-remote --heads https://github.com/pesa1234/openwrt.git
+            exit 1
+          fi
 
           # 🧠 Recupera lo SHA del commit
           COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git refs/heads/$BRANCH | awk '{print $1}')
@@ -72,9 +89,18 @@ jobs:
           else
             echo "build=true" >> $GITHUB_OUTPUT
             echo "🚀 Cambiamenti rilevati! Procedo alla build."
-            [ "$COMMIT_MATCH" = "no" ] && echo "  - Nuovo commit upstream: $COMMIT"
-            [ "$CONFIG_MATCH" = "no" ] && echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
+            
+            # Usa if espliciti invece delle scorciatoie && per evitare errori con set -e
+            if [ "$COMMIT_MATCH" = "no" ]; then
+              echo "  - Nuovo commit upstream: $COMMIT"
+            fi
+            
+            if [ "$CONFIG_MATCH" = "no" ]; then
+              echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
+            fi
           fi
+
+          exit 0
 
   # 🏗️ JOB 2: Compilazione
   build:
@@ -136,7 +162,7 @@ jobs:
           # Scarica solo l'ultimo commit per risparmiare tempo e spazio
           fetch-depth: 1
 
-      # 2. Sincronizziamo i file verso 'snapshot' senza toccare il resto
+      # 2. Sincronizziamo i file verso '${{ env.BUILD_TYPE }}' senza toccare il resto
       - name: Sync Source to Cache Folder
         run: |
 
@@ -210,10 +236,6 @@ jobs:
           sed -i '/CONFIG_VERSION_REPO/d' .config
           sed -i '/CONFIG_CCACHE/d' .config
           sed -i '/CONFIG_CCACHE_DIR/d' .config
-          sed -i '/CONFIG_PER_FEED_REPO/d' .config
-          sed -i '/CONFIG_FEED_ALL_EXTRAS/d' .config
-          sed -i '/CONFIG_VERSION_PER_ARCH/d' .config
-          sed -i '/CONFIG_VERSION_ALL_DIST_REPOS/d' .config
 
           # Usiamo la data SOLO in VERSION_NUMBER per il nome del file
           echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}\"" >> .config
@@ -229,12 +251,6 @@ jobs:
           SUBDIR="${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}"
           echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/$SUBDIR\"" >> .config
 
-          echo "CONFIG_PER_FEED_REPO=n" >> .config
-
-          echo "CONFIG_FEED_ALL_EXTRAS=y" >> .config
-          echo "CONFIG_VERSION_PER_ARCH=n" >> .config
-          echo "CONFIG_VERSION_ALL_DIST_REPOS=n" >> .config
-
           # --- OTTIMIZZAZIONE CACHE ---
           # Abilita ccache nel sistema di build
           echo "CONFIG_CCACHE=y" >> .config
@@ -244,100 +260,89 @@ jobs:
 
           make defconfig
 
-      - name: Patch APK Feed Sources
-        run: |
-          cd ${{ env.REPO_DIR }}
-          # 1. Puliamo la riga che aggiunge il timestamp e il percorso target
-          # Trasformiamo la riga in un semplice echo del Repo URL
-          sed -i "s|echo '%U/\$(DATE)_\$(VERSION_CODE)_\$(BRANCH)/targets/%S/packages/packages.adb'|echo '%U/packages.adb'|g" include/feeds.mk
-        
-          # 2. (Opzionale) Se vuoi eliminare anche i feed ufficiali (base, luci, etc.) 
-          # che usano OWRT_LINK, puoi commentare quelle righe o svuotarle
-          sed -i "s|echo '\$(OWRT_LINK)/%A/base/packages.adb'|# echo no-official-base|g" include/feeds.mk
-          
-          echo "✅ include/feeds.mk patchato con successo!"
-
       - name: Build Firmware
         run: |
           cd ${{ env.REPO_DIR }}
           make -j$(nproc) || make -j1 V=s
 
-      # 📦 prepara file release
+     # 📦 prepara file release
       - name: Prepare release
         run: |
           cd ${{ env.REPO_DIR }}
-          
+ 
           DATE=$(date +%Y-%m-%d)
           COMMIT=${{ needs.check.outputs.commit }}
           SHORT=${COMMIT:0:7}
-          SOURCE_DIR="bin"
+          SOURCE_DIR=bin
           
           # Creiamo le cartelle di destinazione pulite
           mkdir -p release/firmware
           mkdir -p release/packages
           
-          echo "📂 Scansione di $SOURCE_DIR per firmware e pacchetti..."
-
-          # ==========================================
-          # 🔥 1. FIRMWARE (Cerca ovunque sotto bin)
-          # ==========================================
-          # Cerchiamo file .bin e .fip ignorando la struttura delle cartelle
-          find "$SOURCE_DIR" -type f \( -name "*.bin" -o -name "*.fip" -o -name "*.sha256sum" -o -name "*.manifest" \) | while read -r file; do
-              echo "✅ Copio firmware: $(basename "$file")"
-              cp "$file" release/firmware/
-          done
-
-          # ==========================================
-          # 📦 2. PACKAGES (Appiattimento totale)
-          # ==========================================
-          # Invece di cercare la cartella, cerchiamo i file .adb o .ipk
-          # Questo risolve il problema della directory non trovata
-          COUNT_PKG=0
-          find "$SOURCE_DIR" -type f \( -name "*.adb" -o -name "*.ipk" \) | while read -r pkg; do
-              cp "$pkg" release/packages/
-              COUNT_PKG=$((COUNT_PKG + 1))
-          done
+          #echo "📂 Contenuto di: "${{ env.REPO_DIR }}
+          #ls -R || true
           
-          echo "📦 Pacchetti copiati: $COUNT_PKG"
 
-          # ==========================================
-          # 📑 3. INDICE PER IL ROUTER (Cruciale)
-          # ==========================================
-          # Cerchiamo il file packages.adb già generato da OpenWrt
-          # 1. Troviamo dove sta l'indice (sappiamo che c'è dai log precedenti)
-          INDEX_PATH=$(find "$SOURCE_DIR" -name "packages.adb" | head -n 1)
-          
-          if [ -n "$INDEX_PATH" ]; then
-              echo "📑 Indice trovato in: $INDEX_PATH"
-              # Otteniamo la cartella che lo contiene
-              PKG_SRC_DIR=$(dirname "$INDEX_PATH")
-              
-              echo "🚚 Copio TUTTO il contenuto di $PKG_SRC_DIR..."
-              # Copiamo tutto quello che c'è nella cartella dell'indice (file .apk, .ipk, ecc.)
-              cp -v "$PKG_SRC_DIR"/* release/packages/ 2>/dev/null || true
-              
-              # Cerchiamo anche in altre possibili cartelle di pacchetti (feed generali)
-              echo "🔍 Cerco altri pacchetti sparsi..."
-              find "$SOURCE_DIR" -type f \( -name "*.apk" -o -name "*.ipk" \) -exec cp -v {} release/packages/ \; 2>/dev/null || true
-          else
-              echo "❌ ERRORE: packages.adb sparito!"
-              exit 1
+          # =========================
+          # 🔥 FIRMWARE (solo bin/targets)
+          # =========================
+
+          TARGETS_DIR=$(find "$SOURCE_DIR" -type d -name targets | head -n1)
+         
+          if [ -z "$TARGETS_DIR" ]; then
+            echo "❌ Directory targets non trovata sotto $SOURCE_DIR"
+            find "$SOURCE_DIR" -maxdepth 3 || true
+            exit 1
           fi
+         
+          echo "📂 Uso TARGETS_DIR=$TARGETS_DIR"
+         
+          #FW_FILES=$(find "$TARGETS_DIR" -type f -name "*sysupgrade.bin")
+          FW_FILES=$(find "$TARGETS_DIR" -type f \( -name "*.bin" -o -name "*.fip" \))
+         
+          if [ -z "$FW_FILES" ]; then
+            echo "❌ Nessun firmware sysupgrade trovato!"
+            find "$TARGETS_DIR" -maxdepth 4 || true
+            exit 1
+          fi
+         
+          echo "✅ Firmware trovato:"
+          echo "$FW_FILES"
+         
+          # Copia firmware
+          echo "$FW_FILES" | while read -r fw; do
+            cp "$fw" release/firmware/
+          done
+         
+          # Copia checksum / manifest (se presenti)
+          find "$TARGETS_DIR" -type f \( -name "*.sha256*" -o -name "*.manifest" \) \
+            -exec cp {} release/firmware/ \; 2>/dev/null || true
 
-          # Controlliamo il risultato finale
-          COUNT=$(ls release/packages | wc -l)
-          echo "✅ Totale file in release/packages: $COUNT"
+          # =========================
+          # 📦 PACKAGES (solo bin/packages)
+          # =========================
 
-          # ==========================================
-          # 📑 FIX PER IL ROUTER
-          # ==========================================
-          # Assicuriamoci che l'indice sia nella root della cartella pacchetti
-          cp "$INDEX_PATH" release/packages/packages.adb
-          cp "$INDEX_PATH" release/packages/APKINDEX.tar.gz 2>/dev/null || true
+          PKG_DIR=$(find "$SOURCE_DIR" -type d -path "*/packages/*" | head -n1)
+          
+          if [ -z "$PKG_DIR" ]; then
+            echo "❌ Directory packages non trovata sotto $SOURCE_DIR"
+            find "$SOURCE_DIR" -maxdepth 3 || true
+            exit 1
+          fi
+          
+          echo "📦 Copio pacchetti da: $PKG_DIR"
+          cp -r "$PKG_DIR"/* release/packages/
 
-          # ==========================================
-          # 📦 4. ARCHIVIO E VARIABILI
-          # ==========================================
+          
+          # rigenera index opkg
+          cd release/packages
+          ../../scripts/ipkg-make-index.sh . > Packages
+          gzip -f Packages
+          cd ../..
+          
+          # =========================
+          # 📦 ARCHIVIO
+          # =========================
           cd release
           tar -czf packages.tar.gz packages
           
@@ -366,6 +371,8 @@ jobs:
             ${{ env.REPO_DIR }}/release/packages.tar.gz
             ${{ env.REPO_DIR }}/.config
             ${{ env.REPO_DIR }}/${{ env.BUILD_TYPE }}.yaml
+          env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy to GitHub Pages
         run: |
@@ -411,7 +418,7 @@ jobs:
           echo "<html><head><title>Build History</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$MAIN_INDEX"
           echo "<h1>Cronologia Build ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> "$MAIN_INDEX"
           
-          # Elenchiamo le cartelle dentro public/snapshot (dalla più recente)
+          # Elenchiamo le cartelle dentro public/${{ env.BUILD_TYPE }} (dalla più recente)
           # Usiamo basename per avere solo il nome della cartella nel link
           ls -dt "$BASE_DIR"/*/ 2>/dev/null | while read dirpath; do
             dirname=$(basename "$dirpath")
@@ -427,6 +434,8 @@ jobs:
           keep_files: true
 
       - name: Clean Old Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Calcoliamo il punto di partenza per tail (N + 1)
           TAIL_START=$((NUM_RELEASE_TENUTE + 1))
@@ -436,8 +445,68 @@ jobs:
                 gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
                 gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
               done
+              
+
+      - name: Checkout gh-pages only
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+
+          
+      - name: Cleanup gh-pages for deleted releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+   
+          echo "📦 Recupero release ancora presenti..."
+          #gh api repos/${{ github.repository }}/releases \
+          #  | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .tag_name' \
+          #  | sed -E 's/.*-([0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{4}).*/\1/' \
+          #  > /tmp/keep_${{ env.BUILD_TYPE }}.txt
+            
+          gh api repos/erpomata/GL-MT6000/releases \
+            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .tag_name' \
+            | sed -E 's/${{ env.BUILD_TYPE }}-([0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{4}).*/${{ env.BUILD_TYPE }}\/\1/' \
+            > /tmp/keep_${{ env.BUILD_TYPE }}.txt
+   
+          echo "✅ ${{ env.BUILD_TYPE }} da TENERE:"
+          cat /tmp/keep_${{ env.BUILD_TYPE }}.txt || true
+   
+          git fetch origin gh-pages
+          git checkout gh-pages
+   
+
+          for dir in ${{ env.BUILD_TYPE }}/*/ ; do
+          
+            if [ ! -s /tmp/keep_${{ env.BUILD_TYPE }}.txt ]; then
+              echo "❌ keep_${{ env.BUILD_TYPE }}.txt vuoto → ABORT per sicurezza"
+              exit 1
+            fi
+
+            snap="${dir%/}"
+
+            if grep -Fxq "$snap" /tmp/keep_${{ env.BUILD_TYPE }}.txt; then
+              echo "✅ Keeping $snap"
+            else
+              echo "🗑️ Removing $snap"
+              rm -rf "$snap"
+            fi
+          done
+
+   
+          if git status --porcelain | grep .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            git add -A
+            git commit -m "gh-pages: cleanup data for deleted releases"
+            git push origin gh-pages
+          else
+            echo "✅ gh-pages già allineato"
+          fi
+
 
       # 📧 invio email in caso di successo
       - name: Send email
