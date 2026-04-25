@@ -255,7 +255,8 @@ jobs:
           # Abilita ccache nel sistema di build
           echo "CONFIG_CCACHE=y" >> .config
           # Specifica la cartella (deve coincidere con quella nel path della cache sopra)
-          echo "CONFIG_CCACHE_DIR=\"$(pwd)/.ccache_${{ env.BUILD_TYPE }}\"" >> .config
+          #echo "CONFIG_CCACHE_DIR=\"$(pwd)/.ccache_${{ env.BUILD_TYPE }}\"" >> .config
+          echo "CONFIG_CCACHE_DIR=\"${{ github.workspace }}/${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}\"" >> .config
           # ----------------------------
 
           make defconfig
