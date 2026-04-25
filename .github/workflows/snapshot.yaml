@@ -361,7 +361,7 @@ jobs:
             - **Branch:** `${{ needs.check.outputs.branch }}`
             - **Commit SHA:** `${{ needs.check.outputs.commit }}`
             - **${{ env.CONFIG_FILE }}:** `${{ needs.check.outputs.config_hash }}`
-            - **Date:** ${{ env.TS }}
+            - **Date:** "${{ steps.timestamp.outputs.ts }}"
             - **Type:** ${{ env.BUILD_TYPE }}
             ---
             📦 **Sito per i pacchetti:**
