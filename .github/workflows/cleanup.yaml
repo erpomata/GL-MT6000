@@ -1,0 +1,92 @@
+name: Cleanup Old Releases and Pages
+
+on:
+  workflow_dispatch: # Permette l'avvio manuale
+  schedule:
+    - cron: "0 23 * * *"
+
+env:
+  NUM_RELEASE_TENUTE: 10
+  BUILD_TYPE: snapshot
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Delete Old Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Recupero lista release..."
+          # Prende gli ID delle release che corrispondono al BUILD_TYPE
+          RELEASES=$(gh api repos/${{ github.repository }}/releases \
+            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .id' \
+            | tail -n +$((ENV.NUM_RELEASE_TENUTE + 1)))
+
+          for id in $RELEASES; do
+            TAG=$(gh api repos/${{ github.repository }}/releases/$id | jq -r .tag_name)
+            echo "🗑️ Eliminazione Release ID: $id (Tag: $TAG)"
+            gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
+            gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$TAG" || true
+          done
+
+      - name: Sync gh-pages with existing releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. Ottieni i timestamp delle release rimaste (es: 25-04-2026-2012)
+          gh api repos/${{ github.repository }}/releases \
+            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .tag_name' \
+            | sed -E 's/${{ env.BUILD_TYPE }}-([0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{4}).*/\1/' \
+            > /tmp/active_timestamps.txt
+
+          echo "✅ Timestamp da mantenere:"
+          cat /tmp/active_timestamps.txt
+
+          # 2. Entra nella cartella del build type (es: snapshot/)
+          if [ -d "${{ env.BUILD_TYPE }}" ]; then
+            cd "${{ env.BUILD_TYPE }}"
+            for dir in */; do
+              dir=${dir%/} # Rimuove lo slash finale
+              if ! grep -q "$dir" /tmp/active_timestamps.txt; then
+                echo "🗑️ Rimoziene cartella obsoleta dalle Pages: $dir"
+                rm -rf "$dir"
+              fi
+            done
+            cd ..
+          fi
+
+          # 3. Commit e Push delle modifiche alle Pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "🧹 Cleanup: rimosse release e build Pages obsolete" || echo "Nulla da pulire"
+          git push origin gh-pages
+
+      - name: Delete Failed or Cancelled Workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🧹 Analisi workflow non riusciti..."
+          
+          # Recupera gli ID dei workflow che non hanno avuto successo (status != success)
+          # Escludiamo quelli 'in_progress' o 'queued' per sicurezza
+          FAILED_RUNS=$(gh api repos/${{ github.repository }}/actions/runs \
+            --paginate \
+            --jq '.workflow_runs[] | select(.status == "completed" and .conclusion != "success") | .id')
+
+          if [ -z "$FAILED_RUNS" ]; then
+            echo "✅ Nessun workflow fallito da pulire."
+          else
+            for run_id in $FAILED_RUNS; do
+              echo "🗑️ Eliminazione run fallita ID: $run_id"
+              gh api -X DELETE "repos/${{ github.repository }}/actions/runs/$run_id"
+            done
+          fi
