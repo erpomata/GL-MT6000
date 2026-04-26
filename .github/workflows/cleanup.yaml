@@ -3,7 +3,7 @@ name: Maintenance & Cleanup
 on:
   workflow_dispatch: # Avvio manuale
   schedule:
-    - cron: "0 4 * * *" # Ogni notte alle 04:00 UTC
+    - cron: "0 23 * * *" # Ogni notte alle 04:00 UTC
 
 jobs:
   maintenance:
