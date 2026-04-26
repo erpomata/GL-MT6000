@@ -140,10 +140,10 @@ jobs:
       - name: Cache ccache
         uses: actions/cache@v5.0.5
         with:
-          path: |
-            ${{ github.workspace }}/${{ env.BUILD_TYPE }}/dl
-            ${{ github.workspace }}/${{ env.BUILD_TYPE }}/.ccache_${{ env.BUILD_TYPE }}
-          # Usiamo le variabili BUILDER_REPO e CONFIG_FILE per creare il percorso completo
+          #path: |
+          #    ${{ github.workspace }}/${{ env.BUILD_TYPE }}/dl
+          #    ${{ github.workspace }}/${{ env.BUILD_TYPE }}/.ccache_${{ env.BUILD_TYPE }}
+          path: '["${{ github.workspace }}/${{ env.BUILD_TYPE }}/dl", "${{ github.workspace }}/${{ env.BUILD_TYPE }}/.ccache_${{ env.BUILD_TYPE }}"]'
           key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(format('{0}/{1}', env.BUILDER_REPO, env.CONFIG_FILE)) }}
           restore-keys: |
             ccache-${{ needs.check.outputs.branch }}-
