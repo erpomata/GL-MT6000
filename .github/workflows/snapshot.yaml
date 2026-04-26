@@ -142,8 +142,8 @@ jobs:
         uses: actions/cache@v5.0.5
         with:
           path: |
-            ${{ env.REPO_DIR }}/dl
-            ${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}
+              ${{ github.workspace }}/snapshot/dl
+              ${{ github.workspace }}/snapshot/.ccache_snapshot
           # Usiamo le variabili BUILDER_REPO e CONFIG_FILE per creare il percorso completo
           key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(format('{0}/{1}', env.BUILDER_REPO, env.CONFIG_FILE)) }}
           restore-keys: |
