@@ -1,92 +1,103 @@
-name: Cleanup Old Releases and Pages
+name: Maintenance & Cleanup
 
 on:
-  workflow_dispatch: # Permette l'avvio manuale
+  workflow_dispatch: # Avvio manuale
   schedule:
-    - cron: "0 23 * * *"
+    - cron: "0 4 * * *" # Gira ogni notte alle 04:00 (ora UTC)
 
 env:
   NUM_RELEASE_TENUTE: 10
   BUILD_TYPE: snapshot
 
 jobs:
-  cleanup:
+  maintenance:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write # Obbligatorio per eliminare i log dei workflow
+    
     steps:
       - name: Checkout gh-pages
         uses: actions/checkout@v4
         with:
           ref: gh-pages
 
+      # --- 1. PULIZIA WORKFLOW FALLITI O VECCHI ---
+      - name: Cleanup Failed and Old Workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🧹 Eliminazione workflow falliti, cancellati o scaduti..."
+          # Elimina tutti i run che non sono 'success' (failed, cancelled, timed_out)
+          gh run delete --status failed --all
+          gh run delete --status cancelled --all
+          gh run delete --status skipped --all
+          
+          echo "📅 Eliminazione log di workflow più vecchi di 15 giorni..."
+          gh run delete --created "<$(date -d '15 days ago' +%Y-%m-%d)" --all
+
+      # --- 2. PULIZIA VECCHIE RELEASE ---
       - name: Delete Old Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🔍 Recupero lista release..."
-          # Prende gli ID delle release che corrispondono al BUILD_TYPE
-          RELEASES=$(gh api repos/${{ github.repository }}/releases \
+          echo "🔍 Analisi release esistenti..."
+          # Prende gli ID delle release che iniziano con BUILD_TYPE, saltando le prime N
+          RELEASES_TO_DELETE=$(gh api repos/${{ github.repository }}/releases \
             | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .id' \
-            | tail -n +$((ENV.NUM_RELEASE_TENUTE + 1)))
+            | tail -n +$(( ${{ env.NUM_RELEASE_TENUTE }} + 1 )))
 
-          for id in $RELEASES; do
-            TAG=$(gh api repos/${{ github.repository }}/releases/$id | jq -r .tag_name)
-            echo "🗑️ Eliminazione Release ID: $id (Tag: $TAG)"
-            gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
-            gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$TAG" || true
-          done
+          if [ -z "$RELEASES_TO_DELETE" ]; then
+            echo "✅ Nessuna release da eliminare."
+          else
+            for id in $RELEASES_TO_DELETE; do
+              TAG=$(gh api repos/${{ github.repository }}/releases/$id | jq -r .tag_name)
+              echo "🗑️ Eliminazione Release: $TAG (ID: $id)"
+              gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$TAG" || true
+              sleep 1 # Evita rate-limiting
+            done
+          fi
 
-      - name: Sync gh-pages with existing releases
+      # --- 3. SINCRONIZZAZIONE GITHUB PAGES ---
+      - name: Cleanup GitHub Pages Folders
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. Ottieni i timestamp delle release rimaste (es: 25-04-2026-2012)
+          # Recupera i timestamp delle release superstiti
           gh api repos/${{ github.repository }}/releases \
             | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .tag_name' \
-            | sed -E 's/${{ env.BUILD_TYPE }}-([0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{4}).*/\1/' \
-            > /tmp/active_timestamps.txt
+            | sed -E "s/${{ env.BUILD_TYPE }}-([0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{4}).*/\1/" \
+            > /tmp/valid_timestamps.txt
 
-          echo "✅ Timestamp da mantenere:"
-          cat /tmp/active_timestamps.txt
+          echo "📦 Timestamp validi da mantenere:"
+          cat /tmp/valid_timestamps.txt
 
-          # 2. Entra nella cartella del build type (es: snapshot/)
           if [ -d "${{ env.BUILD_TYPE }}" ]; then
+            echo "📂 Controllo cartelle in gh-pages/${{ env.BUILD_TYPE }}/..."
             cd "${{ env.BUILD_TYPE }}"
+            
+            # Ciclo sulle cartelle (es: 25-04-2026-2012/)
             for dir in */; do
-              dir=${dir%/} # Rimuove lo slash finale
-              if ! grep -q "$dir" /tmp/active_timestamps.txt; then
-                echo "🗑️ Rimoziene cartella obsoleta dalle Pages: $dir"
-                rm -rf "$dir"
+              [ -e "$dir" ] || continue
+              timestamp=${dir%/}
+              
+              if ! grep -q "$timestamp" /tmp/valid_timestamps.txt; then
+                echo "🗑️ Rimoziene cartella orfana: $timestamp"
+                rm -rf "$timestamp"
+              else
+                echo "✅ Cartella attiva: $timestamp"
               fi
             done
             cd ..
           fi
 
-          # 3. Commit e Push delle modifiche alle Pages
+          # Commit delle modifiche su gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "🧹 Cleanup: rimosse release e build Pages obsolete" || echo "Nulla da pulire"
-          git push origin gh-pages
-
-      - name: Delete Failed or Cancelled Workflows
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "🧹 Analisi workflow non riusciti..."
-          
-          # Recupera gli ID dei workflow che non hanno avuto successo (status != success)
-          # Escludiamo quelli 'in_progress' o 'queued' per sicurezza
-          FAILED_RUNS=$(gh api repos/${{ github.repository }}/actions/runs \
-            --paginate \
-            --jq '.workflow_runs[] | select(.status == "completed" and .conclusion != "success") | .id')
-
-          if [ -z "$FAILED_RUNS" ]; then
-            echo "✅ Nessun workflow fallito da pulire."
+          if git commit -m "🧹 Maintenance: cleaned up old releases, pages and workflows"; then
+            git push origin gh-pages
           else
-            for run_id in $FAILED_RUNS; do
-              echo "🗑️ Eliminazione run fallita ID: $run_id"
-              gh api -X DELETE "repos/${{ github.repository }}/actions/runs/$run_id"
-            done
+            echo "Nothing changed on GitHub Pages."
           fi
