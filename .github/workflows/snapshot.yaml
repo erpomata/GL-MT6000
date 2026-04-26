@@ -15,7 +15,6 @@ env:
   REPO_DIR: snapshot
   BUILD_TYPE: snapshot
   BUILDER_REPO: builder_repo
-  NUM_RELEASE_TENUTE: 10
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   # 🔍 JOB 1: Controlla se ci sono nuovi commit nel repo remoto
@@ -142,8 +141,8 @@ jobs:
         uses: actions/cache@v5.0.5
         with:
           path: |
-              ${{ github.workspace }}/snapshot/dl
-              ${{ github.workspace }}/snapshot/.ccache_snapshot
+              ${{ github.workspace }}/${{ env.BUILD_TYPE }}/dl
+              ${{ github.workspace }}/${{ env.BUILD_TYPE }}/.ccache_${{ env.BUILD_TYPE }}
           # Usiamo le variabili BUILDER_REPO e CONFIG_FILE per creare il percorso completo
           key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(format('{0}/{1}', env.BUILDER_REPO, env.CONFIG_FILE)) }}
           restore-keys: |
@@ -178,7 +177,7 @@ jobs:
             # --delete: NON lo usiamo, così non cancelliamo la cache (dl, staging_dir)
             # --exclude='.git/': ignora la cartella Git dei sorgenti
             #rsync -aq "$TEMP_NAME/" ${{ env.REPO_DIR }}/
-            rsync -aq --delete --exclude='dl/' --exclude='.ccache_snapshot/' --exclude='staging_dir/' "$TEMP_NAME/" ${{ env.REPO_DIR }}/
+            rsync -aq --delete --exclude='dl/' --exclude='.ccache_${{ env.BUILD_TYPE }}/' --exclude='staging_dir/' "$TEMP_NAME/" ${{ env.REPO_DIR }}/
 
             # Eliminiamo la cartella temporanea
             rm -rf "$TEMP_NAME/"
@@ -434,81 +433,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           keep_files: true
-
-      - name: Clean Old Releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Calcoliamo il punto di partenza per tail (N + 1)
-          TAIL_START=$((NUM_RELEASE_TENUTE + 1))
-          gh api repos/${{ github.repository }}/releases \
-            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | "\(.id) \(.tag_name)"' \
-            | tail -n +$TAIL_START | while read id tag; do
-                gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
-                gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
-              done
-              
-
-      - name: Checkout gh-pages only
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          fetch-depth: 1
-
-          
-      - name: Cleanup gh-pages for deleted releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -e
-   
-          echo "📦 Recupero release ancora presenti..."
-          #gh api repos/${{ github.repository }}/releases \
-          #  | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .tag_name' \
-          #  | sed -E 's/.*-([0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{4}).*/\1/' \
-          #  > /tmp/keep_${{ env.BUILD_TYPE }}.txt
-            
-          gh api repos/erpomata/GL-MT6000/releases \
-            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .tag_name' \
-            | sed -E 's/${{ env.BUILD_TYPE }}-([0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{4}).*/${{ env.BUILD_TYPE }}\/\1/' \
-            > /tmp/keep_${{ env.BUILD_TYPE }}.txt
-   
-          echo "✅ ${{ env.BUILD_TYPE }} da TENERE:"
-          cat /tmp/keep_${{ env.BUILD_TYPE }}.txt || true
-   
-          git fetch origin gh-pages
-          git checkout gh-pages
-   
-
-          for dir in ${{ env.BUILD_TYPE }}/*/ ; do
-          
-            if [ ! -s /tmp/keep_${{ env.BUILD_TYPE }}.txt ]; then
-              echo "❌ keep_${{ env.BUILD_TYPE }}.txt vuoto → ABORT per sicurezza"
-              exit 1
-            fi
-
-            snap="${dir%/}"
-
-            if grep -Fxq "$snap" /tmp/keep_${{ env.BUILD_TYPE }}.txt; then
-              echo "✅ Keeping $snap"
-            else
-              echo "🗑️ Removing $snap"
-              rm -rf "$snap"
-            fi
-          done
-
-   
-          if git status --porcelain | grep .; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-            git add -A
-            git commit -m "gh-pages: cleanup data for deleted releases"
-            git push origin gh-pages
-          else
-            echo "✅ gh-pages già allineato"
-          fi
-
 
       # 📧 invio email in caso di successo
       - name: Send email
