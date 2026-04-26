@@ -177,8 +177,9 @@ jobs:
             # -v: mostra cosa sta facendo (verbose)
             # --delete: NON lo usiamo, così non cancelliamo la cache (dl, staging_dir)
             # --exclude='.git/': ignora la cartella Git dei sorgenti
-            rsync -aq "$TEMP_NAME/" ${{ env.REPO_DIR }}/
-            
+            #rsync -aq "$TEMP_NAME/" ${{ env.REPO_DIR }}/
+            rsync -aq --delete --exclude='dl/' --exclude='.ccache_snapshot/' --exclude='staging_dir/' "$TEMP_NAME/" ${{ env.REPO_DIR }}/
+
             # Eliminiamo la cartella temporanea
             rm -rf "$TEMP_NAME/"
           else
