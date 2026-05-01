@@ -31,18 +31,42 @@ jobs:
       # --- 1. PULIZIA WORKFLOW FALLITI O VECCHI ---
       # Nota: Questo step pulisce i log di TUTTO il repository (non solo dello specifico build_type)
       # Lo eseguiamo solo una volta (per il primo elemento della matrice) per evitare ridondanza
+      # --- 1. PULIZIA WORKFLOW FALLITI O VECCHI ---
       - name: Cleanup Failed and Old Workflows
         if: matrix.build_type == 'snapshot' 
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🧹 Eliminazione workflow falliti o cancellati..."
-          gh run delete --status failed --all
-          gh run delete --status cancelled --all
-          gh run delete --status skipped --all
+          echo "🧹 Recupero workflow falliti, cancellati o skipped..."
           
-          echo "📅 Eliminazione log più vecchi di 15 giorni..."
-          gh run delete --created "<$(date -d '15 days ago' +%Y-%m-%d)" --all
+          # Cerchiamo i workflow con stati non desiderati e li eliminiamo se esistono
+          # Usiamo 'list' per filtrare e 'jq' per estrarre gli ID
+          for status in failed cancelled skipped; do
+            echo "🔍 Controllo status: $status"
+            RUNS_TO_DELETE=$(gh run list --status $status --limit 100 --json databaseId --jq '.[].databaseId')
+            
+            if [ -n "$RUNS_TO_DELETE" ]; then
+              for run_id in $RUNS_TO_DELETE; do
+                echo "🗑️ Eliminazione run ID: $run_id"
+                gh run delete $run_id
+              done
+            else
+              echo "✅ Nessun workflow con status $status da pulire."
+            fi
+          done
+          
+          echo "📅 Eliminazione workflow più vecchi di 15 giorni..."
+          CUTOFF_DATE=$(date -d '15 days ago' +%Y-%m-%d)
+          OLD_RUNS=$(gh run list --created "<$CUTOFF_DATE" --limit 100 --json databaseId --jq '.[].databaseId')
+          
+          if [ -n "$OLD_RUNS" ]; then
+            for run_id in $OLD_RUNS; do
+              echo "🗑️ Eliminazione run vecchia ID: $run_id"
+              gh run delete $run_id
+            done
+          else
+            echo "✅ Nessun workflow vecchio trovato."
+          fi
 
       # --- 2. PULIZIA VECCHIE RELEASE ---
       - name: Delete Old Releases
