@@ -37,35 +37,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🧹 Recupero workflow falliti, cancellati o skipped..."
+          echo "🧹 Pulizia log workflow..."
           
-          # Cerchiamo i workflow con stati non desiderati e li eliminiamo se esistono
-          # Usiamo 'list' per filtrare e 'jq' per estrarre gli ID
-          for status in failed cancelled skipped; do
+          #failure è il termine corretto invece di failed
+          for status in failure cancelled skipped timed_out; do
             echo "🔍 Controllo status: $status"
-            RUNS_TO_DELETE=$(gh run list --status $status --limit 100 --json databaseId --jq '.[].databaseId')
+            # Recuperiamo gli ID
+            RUNS=$(gh run list --status $status --limit 100 --json databaseId --jq '.[].databaseId')
             
-            if [ -n "$RUNS_TO_DELETE" ]; then
-              for run_id in $RUNS_TO_DELETE; do
+            if [ -n "$RUNS" ]; then
+              for run_id in $RUNS; do
                 echo "🗑️ Eliminazione run ID: $run_id"
                 gh run delete $run_id
               done
-            else
-              echo "✅ Nessun workflow con status $status da pulire."
             fi
           done
           
-          echo "📅 Eliminazione workflow più vecchi di 15 giorni..."
-          CUTOFF_DATE=$(date -d '15 days ago' +%Y-%m-%d)
-          OLD_RUNS=$(gh run list --created "<$CUTOFF_DATE" --limit 100 --json databaseId --jq '.[].databaseId')
-          
+          # Pulizia per data
+          CUTOFF=$(date -d '15 days ago' +%Y-%m-%d)
+          OLD_RUNS=$(gh run list --created "<$CUTOFF" --limit 100 --json databaseId --jq '.[].databaseId')
           if [ -n "$OLD_RUNS" ]; then
-            for run_id in $OLD_RUNS; do
-              echo "🗑️ Eliminazione run vecchia ID: $run_id"
-              gh run delete $run_id
-            done
-          else
-            echo "✅ Nessun workflow vecchio trovato."
+            for id in $OLD_RUNS; do gh run delete $id; done
           fi
 
       # --- 2. PULIZIA VECCHIE RELEASE ---
