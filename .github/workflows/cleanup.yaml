@@ -3,7 +3,7 @@ name: Maintenance & Cleanup
 on:
   workflow_dispatch: # Avvio manuale
   schedule:
-    - cron: "0 23 * * *" # Ogni notte alle 04:00 UTC
+    - cron: "0 23 * * *" # Ogni notte alle 23:00 UTC
 
 jobs:
   maintenance:
@@ -15,105 +15,75 @@ jobs:
     
     strategy:
       matrix:
-        build_type: [snapshot, main] # <--- Qui aggiungi tutti i tipi di build che hai
-      fail-fast: false # Se fallisce la pulizia di uno, l'altro continua
-
-    env:
-      NUM_RELEASE_TENUTE: 10
-      BUILD_TYPE: ${{ matrix.build_type }}
+        build_type: [snapshot, main]
+      fail-fast: false # Se uno fallisce, l'altro continua
 
     steps:
       - name: Checkout gh-pages
         uses: actions/checkout@v4
         with:
           ref: gh-pages
+          fetch-depth: 1
 
-      # --- 1. PULIZIA WORKFLOW FALLITI O VECCHI ---
-      # Nota: Questo step pulisce i log di TUTTO il repository (non solo dello specifico build_type)
-      # Lo eseguiamo solo una volta (per il primo elemento della matrice) per evitare ridondanza
-      # --- 1. PULIZIA WORKFLOW FALLITI O VECCHI ---
-      - name: Cleanup Failed and Old Workflows
-        if: matrix.build_type == 'snapshot' 
+      - name: Cleanup Specialized (Runs, Releases and Files)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUM_RELEASE_TENUTE: 10
         run: |
-          echo "🧹 Pulizia log workflow..."
-          
-          #failure è il termine corretto invece di failed
+          echo "🧹 Avvio pulizia selettiva per il tipo: ${{ matrix.build_type }}"
+
+          # 1. PULIZIA WORKFLOW RUNS (Solo quelli falliti/annullati del proprio tipo)
+          # Specifichiamo il file workflow relativo al build_type
+          echo "🔍 Pulizia log workflow per ${{ matrix.build_type }}.yaml"
           for status in failure cancelled skipped timed_out; do
-            echo "🔍 Controllo status: $status"
-            # Recuperiamo gli ID
-            RUNS=$(gh run list --status $status --limit 100 --json databaseId --jq '.[].databaseId')
+            echo "🔍 Analisi log con stato: $status..."
+            RUNS=$(gh run list --workflow "${{ matrix.build_type }}.yaml" --status $status --limit 100 --json databaseId --jq '.[].databaseId')
             
             if [ -n "$RUNS" ]; then
               for run_id in $RUNS; do
                 echo "🗑️ Eliminazione run ID: $run_id"
-                gh run delete $run_id
+                gh run delete $run_id || true
               done
+            else
+              echo "✅ Nessun run da eliminare per $status."
             fi
           done
+
+          # 2. PULIZIA RELEASES (Solo quelle che iniziano con main- o snapshot-)
+          echo "📦 Analisi release per il prefisso: ${{ matrix.build_type }}-"
+          # Prende la lista, filtra per prefisso, salta le ultime N e cancella le restanti
+          RELEASES_TO_DELETE=$(gh release list --limit 100 | grep "^${{ matrix.build_type }}-" | awk '{print $1}' | tail -n +$((NUM_RELEASE_TENUTE + 1)))
           
-          # Pulizia per data
-          CUTOFF=$(date -d '15 days ago' +%Y-%m-%d)
-          OLD_RUNS=$(gh run list --created "<$CUTOFF" --limit 100 --json databaseId --jq '.[].databaseId')
-          if [ -n "$OLD_RUNS" ]; then
-            for id in $OLD_RUNS; do gh run delete $id; done
-          fi
-
-      # --- 2. PULIZIA VECCHIE RELEASE ---
-      - name: Delete Old Releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "🔍 Analisi release per: ${{ env.BUILD_TYPE }}"
-          RELEASES_TO_DELETE=$(gh api repos/${{ github.repository }}/releases \
-            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .id' \
-            | tail -n +$(( ${{ env.NUM_RELEASE_TENUTE }} + 1 )))
-
-          if [ -z "$RELEASES_TO_DELETE" ]; then
-            echo "✅ Nessuna release ${{ env.BUILD_TYPE }} da eliminare."
+          if [ -n "$RELEASES_TO_DELETE" ]; then
+            for tag in $RELEASES_TO_DELETE; do
+              echo "🗑️ Eliminazione release e tag: $tag"
+              gh release delete "$tag" --yes --cleanup-tag || true
+            done
           else
-            for id in $RELEASES_TO_DELETE; do
-              TAG=$(gh api repos/${{ github.repository }}/releases/$id | jq -r .tag_name)
-              echo "🗑️ Eliminazione Release: $TAG"
-              gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
-              gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$TAG" || true
-              sleep 1
-            done
+            echo "✅ Le release sono già ottimizzate (meno di $NUM_RELEASE_TENUTE)."
           fi
 
-      # --- 3. SINCRONIZZAZIONE GITHUB PAGES ---
-      - name: Cleanup GitHub Pages Folders
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 3. PULIZIA CARTELLE LOCALI (gh-pages/main o gh-pages/snapshot)
+          if [ -d "${{ matrix.build_type }}" ]; then
+            echo "📂 Gestione file in gh-pages/${{ matrix.build_type }}/"
+            # Cancella i file più vecchi di 30 giorni nella cartella specifica
+            find "${{ matrix.build_type }}" -type f -mtime +30 -delete
+            echo "✅ Pulizia cartella locale completata."
+          else
+            echo "⚠️ Cartella ${{ matrix.build_type }} non trovata, salto questo step."
+          fi
+
+      - name: Commit and Push Changes
         run: |
-          # Recupera i timestamp delle release superstiti per questo BUILD_TYPE
-          gh api repos/${{ github.repository }}/releases \
-            | jq -r '.[] | select(.tag_name | startswith("${{ env.BUILD_TYPE }}-")) | .tag_name' \
-            | sed -E "s/${{ env.BUILD_TYPE }}-([0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{4}).*/\1/" \
-            > /tmp/valid_timestamps.txt
-
-          if [ -d "${{ env.BUILD_TYPE }}" ]; then
-            echo "📂 Controllo cartelle in gh-pages/${{ env.BUILD_TYPE }}/..."
-            cd "${{ env.BUILD_TYPE }}"
-            for dir in */; do
-              [ -e "$dir" ] || continue
-              timestamp=${dir%/}
-              if ! grep -q "$timestamp" /tmp/valid_timestamps.txt; then
-                echo "🗑️ Rimoziene cartella orfana: $timestamp"
-                rm -rf "$timestamp"
-              fi
-            done
-            cd ..
-          fi
-
-          # Commit e Push
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           git add .
-          # Usiamo || true per non far fallire il job se non ci sono modifiche per questo build_type
-          git commit -m "🧹 Maintenance (${{ env.BUILD_TYPE }}): cleanup old assets" || echo "Nothing to change"
-          
-          # Facciamo il pull prima del push per evitare conflitti se snapshot e main finiscono quasi insieme
-          git pull --rebase origin gh-pages
-          git push origin gh-pages
+          # Controllo se ci sono cambiamenti prima di fare il commit
+          if ! git diff --quiet --exit-code --cached; then
+            git commit -m "🧹 Cleanup automatico: pulizia ${{ matrix.build_type }}"
+            # Pull rebase per evitare conflitti se i due job matrix scrivono contemporaneamente
+            git pull --rebase origin gh-pages
+            git push origin gh-pages
+          else
+            echo "✨ Nulla da pulire nel repository locale."
+          fi
