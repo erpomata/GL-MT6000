@@ -386,30 +386,6 @@ jobs:
             exit 1
           fi
 
-          # 4. Generazione Index HTML della build specifica (Timestamp)
-          SPECIFIC_INDEX="$TARGET_PATH/index.html"
-          echo "<html><head><title>Build $TS</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$SPECIFIC_INDEX"
-          echo "<h1>OpenWrt Build: $TS (${{ env.BUILD_TYPE }})</h1><hr><ul>" >> "$SPECIFIC_INDEX"
-          
-          # Elenchiamo i file presenti nella cartella specifica
-          ls -1 "$TARGET_PATH" | grep -v "index.html" | while read f; do
-            echo "<li><a href=\"$f\">$f</a></li>" >> "$SPECIFIC_INDEX"
-          done
-          echo "</ul><hr><p>Generated: $(date)</p></body></html>" >> "$SPECIFIC_INDEX"
-
-          # 5. Generazione Index HTML principale (Cronologia)
-          MAIN_INDEX="$BASE_DIR/index.html"
-          echo "<html><head><title>Build History</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$MAIN_INDEX"
-          echo "<h1>Cronologia Build ${{ env.BUILD_TYPE }}</h1><hr><ul>" >> "$MAIN_INDEX"
-          
-          # Elenchiamo le cartelle dentro public/${{ env.BUILD_TYPE }} (dalla più recente)
-          # Usiamo basename per avere solo il nome della cartella nel link
-          ls -dt "$BASE_DIR"/*/ 2>/dev/null | while read dirpath; do
-            dirname=$(basename "$dirpath")
-            echo "<li><a href=\"$dirname/\">$dirname/</a></li>" >> "$MAIN_INDEX"
-          done
-          echo "</ul><p><a href='../'>.. Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
-
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4.0.0
         with:
