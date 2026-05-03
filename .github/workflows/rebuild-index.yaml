@@ -1,0 +1,65 @@
+name: Rebuild Pages Index
+
+on:
+  workflow_dispatch: # Permette l'avvio manuale
+  schedule:
+    - cron: "*/5 * * * *" # Gira ogni 5 minuti
+
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Generate HTML Indices
+        run: |
+          # Funzione per generare l'indice di una categoria (main o snapshot)
+          generate_for() {
+            local TYPE=$1
+            if [ ! -d "$TYPE" ]; then return; fi
+            
+            echo "📊 Indicizzazione: $TYPE"
+            
+            # 1. Indice principale della categoria (Lista delle build)
+            MAIN_INDEX="$TYPE/index.html"
+            echo "<html><head><title>Build History - $TYPE</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$MAIN_INDEX"
+            echo "<h1>Cronologia Build $TYPE</h1><hr><ul>" >> "$MAIN_INDEX"
+            
+            # Elenca cartelle dalla più recente
+            ls -dt "$TYPE"/*/ 2>/dev/null | while read dirpath; do
+              dirname=$(basename "$dirpath")
+              echo "<li><a href=\"$dirname/\">$dirname/</a></li>" >> "$MAIN_INDEX"
+              
+              # 2. Sotto-indice per ogni specifica build (Lista file APK/Bin)
+              SPEC_INDEX="$dirpath/index.html"
+              echo "<html><head><title>Build $dirname</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$SPEC_INDEX"
+              echo "<h2>Files in $dirname</h2><p><a href='../'>.. Torna su</a></p><hr><ul>" >> "$SPEC_INDEX"
+              ls -1 "$dirpath" | grep -v "index.html" | while read file; do
+                echo "<li><a href=\"$file\">$file</a></li>" >> "$SPEC_INDEX"
+              done
+              echo "</ul></body></html>" >> "$SPEC_INDEX"
+            done
+            
+            echo "</ul><p><a href='../'>🏠 Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
+          }
+
+          # Eseguiamo per entrambi i rami
+          generate_for "main"
+          generate_for "snapshot"
+
+      - name: Commit and Push if changed
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          if ! git diff --quiet --exit-code --cached; then
+            git commit -m "🌎 Update Pages Index (Auto-generated)"
+            git push origin gh-pages
+          else
+            echo "Nessun cambiamento nell'indice."
+          fi
