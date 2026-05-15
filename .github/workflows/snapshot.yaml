@@ -194,6 +194,8 @@ jobs:
 
       - name: Apply Config and Versioning
         run: |
+          TS="${{ steps.timestamp.outputs.ts }}"
+          FINAL_URL="https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/$TS"
           cp ${{ env.BUILDER_REPO }}/${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
           cp ${{ env.BUILDER_REPO }}/.github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
 
@@ -248,8 +250,16 @@ jobs:
           echo 'CONFIG_VERSION_PRODUCT=""' >> .config
           
           # Definiamo la sottocartella specifica
-          SUBDIR="${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}"
-          echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/$SUBDIR\"" >> .config
+          echo "CONFIG_VERSION_REPO=\"$FINAL_URL\"" >> .config
+
+          # 3. IL FIX: Forziamo la creazione di un file distfeeds.conf personalizzato
+          # Questo sovrascrive il comportamento di default che aggiunge i path infiniti
+          mkdir -p files/etc/opkg
+          echo "src/gz custom_generic $FINAL_URL" > files/etc/opkg/distfeeds.conf
+
+          # Se il tuo router usa il nuovo sistema APK (nuove versioni snapshot)
+          mkdir -p files/etc/apk
+          echo "$FINAL_URL" > files/etc/apk/repositories.d/custom.list
 
           # --- OTTIMIZZAZIONE CACHE ---
           # Abilita ccache nel sistema di build
