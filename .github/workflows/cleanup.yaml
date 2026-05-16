@@ -100,8 +100,6 @@ jobs:
               else
                 echo "✅ Nessun run da eliminare per cleanup.yaml."
               fi
-
-
           fi
 
           # 2. PULIZIA RELEASES (Solo quelle che iniziano con main- o snapshot-)
