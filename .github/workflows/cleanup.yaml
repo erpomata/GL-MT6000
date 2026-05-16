@@ -48,37 +48,44 @@ jobs:
             fi
           done
 
-          # 1. Recupera gli ID (aggiunto il flag --repo per sicurezza nelle Action)
-          RUNS=$(gh run list --workflow rebuild-index.yaml --limit 100 --json databaseId --jq '.[].databaseId')
+          if [ "${{ matrix.build_type }}" == "snapshot" ]; then
+              
+              # =========================================================
+              # 1. Recupera la lista delle run rebuild-index.yaml
+              # =========================================================
+              RUNS_INDEX=$(gh run list --workflow rebuild-index.yaml --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY")
 
-          if [ -n "$RUNS" ]; then
-            # Contiamo quante run abbiamo trovato (giusto per un log più pulito)
-            COUNT=$(echo "$RUNS" | wc -l | xargs)
-            echo "🗑️ Trovate $COUNT run da eliminare. Inizio eliminazione..."
+              if [ -n "$RUNS_INDEX" ]; then
+                COUNT_INDEX=$(echo "$RUNS_INDEX" | wc -l | xargs)
+                echo "🗑️ Trovate $COUNT_INDEX run di rebuild-index da eliminare. Inizio..."
+                
+                echo "$RUNS_INDEX" | xargs -P 4 -I {} sh -c 'echo "Eliminazione run ID: {}" && gh run delete "{}" --repo "'"$GITHUB_REPOSITORY"'" || true'
+              else
+                echo "✅ Nessun run da eliminare per il workflow rebuild-index.yaml."
+              fi
           
-            # Usiamo xargs con -P 4 per eliminare fino a 4 run contemporaneamente (molto più veloce)
-            # Rimuovi "-P 4" se preferisci l'eliminazione sequenziale classica
-            echo "$RUNS" | xargs -P 4 -I {} sh -c 'echo "Eliminazione run ID: {}" && gh run delete {} || true'
-          else
-            echo "✅ Nessun run da eliminare per il workflow rebuild-index.yaml."
-          fi
+              # =========================================================
+              # 2. Recupera la lista delle run cleanup.yaml (Questo workflow)
+              # =========================================================
+              RUNS_CLEANUP=$(gh run list --workflow cleanup.yaml --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY")
 
-          # 1. Recupera la lista delle run
-          RUNS=$(gh run list --workflow cleanup.yaml --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY")
-
-          if [ -n "$RUNS" ]; then
-            for run_id in $RUNS; do
-            
-              # 2. Controllo di sicurezza: se l'ID è quello della run corrente, saltalo
-              if [ "$run_id" = "$GITHUB_RUN_ID" ]; then
-                echo "⏭️ Salto la run corrente (ID: $run_id)"
-                continue
+              if [ -n "$RUNS_CLEANUP" ]; then
+                # Rimuoviamo l'ID della run corrente ($GITHUB_RUN_ID) dalla lista usando grep -v
+                # L'opzione -w cerca la parola esatta per evitare falsi positivi parziali
+                RUNS_CLEANUP_FILTERED=$(echo "$RUNS_CLEANUP" | grep -v -w "$GITHUB_RUN_ID" || true)
+                
+                if [ -n "$RUNS_CLEANUP_FILTERED" ]; then
+                  COUNT_CLEAN_FILT=$(echo "$RUNS_CLEANUP_FILTERED" | wc -l | xargs)
+                  echo "🗑️ Trovate $COUNT_CLEAN_FILT run di cleanup da eliminare. Inizio..."
+                  
+                  echo "$RUNS_CLEANUP_FILTERED" | xargs -P 4 -I {} sh -c 'echo "Eliminazione run ID: {}" && gh run delete "{}" --repo "'"$GITHUB_REPOSITORY"'" || true'
+                else
+                  echo "⏭️ Trovata solo la run corrente di cleanup.yaml. Salto la cancellazione."
+                fi
+              else
+                echo "✅ Nessun run da eliminare per cleanup.yaml."
               fi
 
-              echo "$RUNS" | xargs -P 4 -I {} sh -c 'echo "Eliminazione run ID: {}" && gh run delete {} || true'
-            done
-          else
-            echo "✅ Nessun run da eliminare per cleanup.yaml."
           fi
 
           # 2. PULIZIA RELEASES (Solo quelle che iniziano con main- o snapshot-)
