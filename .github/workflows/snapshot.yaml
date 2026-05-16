@@ -140,13 +140,12 @@ jobs:
       - name: Cache ccache
         uses: actions/cache@v5.0.5
         with:
-          #path: |
-          #    ${{ github.workspace }}/${{ env.BUILD_TYPE }}/dl
-          #    ${{ github.workspace }}/${{ env.BUILD_TYPE }}/.ccache_${{ env.BUILD_TYPE }}
-          path: '["${{ github.workspace }}/${{ env.BUILD_TYPE }}/dl", "${{ github.workspace }}/${{ env.BUILD_TYPE }}/.ccache_${{ env.BUILD_TYPE }}"]'
-          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(format('{0}/{1}', env.BUILDER_REPO, env.CONFIG_FILE)) }}
+          path: |
+            ${{ env.REPO_DIR }}/dl
+            ${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}
+          key: ccache-${{ env.BUILD_TYPE }}-${{ hashFiles(env.CONFIG_FILE) }}
           restore-keys: |
-            ccache-${{ needs.check.outputs.branch }}-
+            ccache-${{ env.BUILD_TYPE }}-
 
       - name: Checkout Source ${{ needs.check.outputs.branch }}
         uses: actions/checkout@v5
@@ -254,12 +253,11 @@ jobs:
 
           # 3. IL FIX: Forziamo la creazione di un file distfeeds.conf personalizzato
           # Questo sovrascrive il comportamento di default che aggiunge i path infiniti
-          mkdir -p files/etc/opkg
-          echo "src/gz custom_generic $FINAL_URL" > files/etc/opkg/distfeeds.conf
+          mkdir -p ${{ env.REPO_DIR }}/files/etc/opkg
+          mkdir -p ${{ env.REPO_DIR }}/files/etc/apk/repositories.d
 
-          # Se il tuo router usa il nuovo sistema APK (nuove versioni snapshot)
-          mkdir -p files/etc/apk
-          echo "$FINAL_URL" > files/etc/apk/repositories.d/custom.list
+          echo "src/gz custom_generic $FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/opkg/distfeeds.conf
+          echo "$FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/apk/repositories.d/custom.list
 
           # --- OTTIMIZZAZIONE CACHE ---
           # Abilita ccache nel sistema di build
