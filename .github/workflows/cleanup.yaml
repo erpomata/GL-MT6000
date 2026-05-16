@@ -41,13 +41,45 @@ jobs:
             
             if [ -n "$RUNS" ]; then
               for run_id in $RUNS; do
-                echo "🗑️ Eliminazione run ID: $run_id"
-                gh run delete $run_id || true
+                echo "$RUNS" | xargs -P 4 -I {} sh -c 'echo "Eliminazione run ID: {}" && gh run delete {} || true'
               done
             else
               echo "✅ Nessun run da eliminare per $status."
             fi
           done
+
+          # 1. Recupera gli ID (aggiunto il flag --repo per sicurezza nelle Action)
+          RUNS=$(gh run list --workflow rebuild-index.yaml --limit 100 --json databaseId --jq '.[].databaseId')
+
+          if [ -n "$RUNS" ]; then
+            # Contiamo quante run abbiamo trovato (giusto per un log più pulito)
+            COUNT=$(echo "$RUNS" | wc -l | xargs)
+            echo "🗑️ Trovate $COUNT run da eliminare. Inizio eliminazione..."
+          
+            # Usiamo xargs con -P 4 per eliminare fino a 4 run contemporaneamente (molto più veloce)
+            # Rimuovi "-P 4" se preferisci l'eliminazione sequenziale classica
+            echo "$RUNS" | xargs -P 4 -I {} sh -c 'echo "Eliminazione run ID: {}" && gh run delete {} || true'
+          else
+            echo "✅ Nessun run da eliminare per il workflow rebuild-index.yaml."
+          fi
+
+          # 1. Recupera la lista delle run
+          RUNS=$(gh run list --workflow cleanup.yaml --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY")
+
+          if [ -n "$RUNS" ]; then
+            for run_id in $RUNS; do
+            
+              # 2. Controllo di sicurezza: se l'ID è quello della run corrente, saltalo
+              if [ "$run_id" = "$GITHUB_RUN_ID" ]; then
+                echo "⏭️ Salto la run corrente (ID: $run_id)"
+                continue
+              fi
+
+              echo "$RUNS" | xargs -P 4 -I {} sh -c 'echo "Eliminazione run ID: {}" && gh run delete {} || true'
+            done
+          else
+            echo "✅ Nessun run da eliminare per cleanup.yaml."
+          fi
 
           # 2. PULIZIA RELEASES (Solo quelle che iniziano con main- o snapshot-)
           echo "📦 Analisi release per il prefisso: ${{ matrix.build_type }}-"
