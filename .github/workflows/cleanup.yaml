@@ -87,6 +87,21 @@ jobs:
                 echo "✅ Nessun run da eliminare per cleanup.yaml."
               fi
 
+              # =========================================================
+              # 3. Recupera la lista delle run pages-build-deployment
+              # =========================================================
+              RUNS_CLEANUP=$(gh run list --workflow pages-build-deployment --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY")
+
+              if [ -n "$RUNS_CLEANUP" ]; then
+                  COUNT_CLEAN_FILT=$(echo "$RUNS_CLEANUP" | wc -l | xargs)
+                  echo "🗑️ Trovate $COUNT_CLEAN_FILT run di cleanup da eliminare. Inizio..."
+                  
+                  echo "$RUNS_CLEANUP" | xargs -P 4 -I {} sh -c 'echo "Eliminazione run ID: {}" && gh run delete "{}" --repo "'"$GITHUB_REPOSITORY"'" || true'
+              else
+                echo "✅ Nessun run da eliminare per cleanup.yaml."
+              fi
+
+
           fi
 
           # 2. PULIZIA RELEASES (Solo quelle che iniziano con main- o snapshot-)
