@@ -75,16 +75,26 @@ jobs:
           fi
           echo "config_hash=$CONFIG_HASH" >> $GITHUB_OUTPUT
 
+          # 📄 Calcola l'hash del tuo file BUILD_TYPE.yaml (Assicurati che il file sia già scaricato/presente in questa fase)
+          # Se il tuo config si chiama diversamente o è in una cartella, aggiorna il percorso qui
+          if [ -f "${{ env.BUILD_TYPE }}.yaml" ]; then
+            SCRIPT_HASH=$(sha256sum ${{ env.BUILD_TYPE }}.yaml | awk '{print $1}')
+          else
+            SCRIPT_HASH="config_non_trovato"
+          fi
+          echo "script_hash=$SCRIPT_HASH" >> $GITHUB_OUTPUT
+
           # 📦 Controlla se lo SHA è già menzionato nell'ultima release del TUO repo
           LAST_BODY=$(gh api repos/${{ github.repository }}/releases --jq ". | map(select(.tag_name | test(\"${{ env.BUILD_TYPE }}\"; \"i\"))) | .[0].body" 2>/dev/null || echo "")
 
           # 🔍 Verifica le presenze
           COMMIT_MATCH=$(echo "$LAST_BODY" | grep -q "$COMMIT" && echo "yes" || echo "no")
           CONFIG_MATCH=$(echo "$LAST_BODY" | grep -q "$CONFIG_HASH" && echo "yes" || echo "no")
+          SCRIPT_MATCH=$(echo "$LAST_BODY" | grep -q "$SCRIPT_HASH" && echo "yes" || echo "no")
 
-          if [ "$COMMIT_MATCH" = "yes" ] && [ "$CONFIG_MATCH" = "yes" ]; then
+          if [ "$COMMIT_MATCH" = "yes" ] && [ "$CONFIG_MATCH" = "yes" ] && [ "$SCRIPT_MATCH" = "yes" ]; then
             echo "build=false" >> $GITHUB_OUTPUT
-            echo "✅ Nessun nuovo commit e .config invariato. Build saltata."
+            echo "✅ Nessun nuovo commit, .config o script invariato. Build saltata."
           else
             echo "build=true" >> $GITHUB_OUTPUT
             echo "🚀 Cambiamenti rilevati! Procedo alla build."
@@ -96,6 +106,10 @@ jobs:
             
             if [ "$CONFIG_MATCH" = "no" ]; then
               echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
+            fi
+
+            if [ "$SCRIPT_HASH" = "no" ]; then
+              echo "  - File script locale modificato (Nuovo Hash: $SCRIPT_MATCH)"
             fi
           fi
 
@@ -370,6 +384,7 @@ jobs:
             - **Branch:** `${{ needs.check.outputs.branch }}`
             - **Commit SHA:** `${{ needs.check.outputs.commit }}`
             - **${{ env.CONFIG_FILE }}:** `${{ needs.check.outputs.config_hash }}`
+            - **${{ env.CONFIG_FILE }}.yaml:** `${{ needs.check.outputs.script_hash }}`
             - **Date:** "${{ steps.timestamp.outputs.ts }}"
             - **Type:** ${{ env.BUILD_TYPE }}
             ---
