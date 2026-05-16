@@ -48,6 +48,7 @@ jobs:
             fi
           done
 
+          #Lo faccio solo per snapshot altrimenti lo fanno iparallelo due processi e si richiano casini
           if [ "${{ matrix.build_type }}" == "snapshot" ]; then
               
               # =========================================================
