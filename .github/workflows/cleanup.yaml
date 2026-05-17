@@ -69,10 +69,10 @@ jobs:
                 echo "🗑️ Eliminazione run ID: $run_id (Stato build: ${BUILD_CONCLUSION:-annullata / vecchia})"
                gh run delete "$run_id" || true
               fi
-          done
-        else
-          echo "✅ Nessuna run trovata nel raggio d'azione."
-        fi
+            done
+          else
+            echo "✅ Nessuna run trovata nel raggio d'azione."
+          fi
 
           #Lo faccio solo per snapshot altrimenti lo fanno iparallelo due processi e si richiano casini
           if [ "${{ matrix.build_type }}" == "snapshot" ]; then
