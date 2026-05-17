@@ -94,8 +94,8 @@ jobs:
 
           if [ "$COMMIT_MATCH" = "yes" ] && [ "$CONFIG_MATCH" = "yes" ] && [ "$SCRIPT_MATCH" = "yes" ]; then
             echo "build=false" >> $GITHUB_OUTPUT
-            gh run cancel ${{ github.run_id }}
             echo "✅ Nessun nuovo commit, .config o script invariato. Build saltata."
+            gh run cancel ${{ github.run_id }}
           else
             echo "build=true" >> $GITHUB_OUTPUT
             echo "🚀 Cambiamenti rilevati! Procedo alla build."
