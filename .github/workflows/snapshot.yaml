@@ -268,11 +268,12 @@ jobs:
 
           # 3. IL FIX: Forziamo la creazione di un file distfeeds.conf personalizzato
           # Questo sovrascrive il comportamento di default che aggiunge i path infiniti
-          mkdir -p ${{ env.REPO_DIR }}/files/etc/opkg
-          mkdir -p ${{ env.REPO_DIR }}/files/etc/apk/repositories.d
+          #mkdir -p ${{ env.REPO_DIR }}/files/etc/opkg
+          #mkdir -p ${{ env.REPO_DIR }}/files/etc/apk/repositories.d
 
-          echo "src/gz custom_generic $FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/opkg/distfeeds.conf
-          echo "$FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/apk/repositories.d/custom.list
+          #echo "src/gz custom_generic $FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/opkg/distfeeds.conf
+          #echo "$FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/apk/repositories.d/custom.list
+          #echo "$FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/apk/repositories.d/distfeeds.list
 
           # --- OTTIMIZZAZIONE CACHE ---
           # Abilita ccache nel sistema di build
@@ -281,6 +282,32 @@ jobs:
           #echo "CONFIG_CCACHE_DIR=\"$(pwd)/.ccache_${{ env.BUILD_TYPE }}\"" >> .config
           echo "CONFIG_CCACHE_DIR=\"${{ github.workspace }}/${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}\"" >> .config
           # ----------------------------
+
+
+          # 2. FIX PER APK (Snapshot recenti):
+          # Impediamo ai Makefile di base-files di appendere il path del target a VERSION_REPO
+          if [ -f package/base-files/Makefile ]; then
+              sed -i 's|$(VERSION_REPO)/targets/$(BOARD)/$(SUBTARGET)/packages|$(VERSION_REPO)|g' package/base-files/Makefile
+              sed -i 's|$(VERSION_REPO)/targets/$(BOARD)/$(SUBTARGET)|$(VERSION_REPO)|g' package/base-files/Makefile
+          fi
+
+          # 3. FIX PER OPKG (Per sicurezza, se ci fossero rimasugli):
+          if [ -f package/base-files/image-config.in ]; then
+              sed -i 's|$(VERSION_REPO)/targets/$(BOARD)/$(SUBTARGET)/packages|$(VERSION_REPO)|g' package/base-files/image-config.in
+              sed -i 's|$(VERSION_REPO)/targets/$(BOARD)/$(SUBTARGET)|$(VERSION_REPO)|g' package/base-files/image-config.in
+          fi
+
+          # 4. FIX NEL CORE DEL MECCANISMO DI VERSIONE:
+          # Corretto il refuso su $(BOARD)
+          if [ -f include/version.mk ]; then
+              sed -i 's|/targets/$(BOARD)/$(SUBTARGET)/packages||g' include/version.mk
+              sed -i 's|/targets/$(BOARD)/$(SUBTARGET)||g' include/version.mk
+          fi
+
+
+          # Impedisce ad APK di appendere il percorso del target all'URL del REPO
+          #sed -i 's|/targets/$(BOARD)/$(SUBTARGET)/packages||g' package/base-files/Makefile
+          #sed -i 's|/targets/$(BOARD)/$(SUBTARGET)||g' package/base-files/Makefile
 
           make defconfig
 
