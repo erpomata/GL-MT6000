@@ -426,55 +426,55 @@ jobs:
           env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-        - name: Deploy to GitHub Pages
-          run: |
-            # 1. Setup Variabili e Cartelle Base
-            TS="${{ steps.timestamp.outputs.ts }}"
-            BASE_DIR="public/${{ env.BUILD_TYPE }}"
-          
-            echo "🚀 Preparazione Deploy speculare per build: $TS"
+      - name: Deploy to GitHub Pages
+        run: |
+          # 1. Setup Variabili e Cartelle Base
+          TS="${{ steps.timestamp.outputs.ts }}"
+          BASE_DIR="public/${{ env.BUILD_TYPE }}"
+        
+          echo "🚀 Preparazione Deploy speculare per build: $TS"
 
-            # 🔍 2. RILEVAMENTO DINAMICO DEL PERCORSO CHILOMETRICO
-            # Cerchiamo la cartella dei pacchetti generata da OpenWrt dentro bin/targets/
-            # Questo comando trova il percorso reale (es. openwrt/bin/targets/mediatek/filogic)
-            TARGET_BIN_DIR=$(find ${{ env.REPO_DIR }}/bin/targets -type d -name "filogic" | head -n 1)
-          
-            if [ -z "$TARGET_BIN_DIR" ]; then
-              echo "❌ ERRORE: Impossibile trovare la cartella dei pacchetti del target!"
-              exit 1
-            fi
+          # 🔍 2. RILEVAMENTO DINAMICO DEL PERCORSO CHILOMETRICO
+          # Cerchiamo la cartella dei pacchetti generata da OpenWrt dentro bin/targets/
+          # Questo comando trova il percorso reale (es. openwrt/bin/targets/mediatek/filogic)
+          TARGET_BIN_DIR=$(find ${{ env.REPO_DIR }}/bin/targets -type d -name "filogic" | head -n 1)
+        
+          if [ -z "$TARGET_BIN_DIR" ]; then
+            echo "❌ ERRORE: Impossibile trovare la cartella dei pacchetti del target!"
+            exit 1
+          fi
 
-            # Estraiamo il nome della cartella del firmware specifico (es. 2026-05-17_17-05-2026-0805_next-r4.8.2.rss.mtk)
-            # Lo troviamo guardando i file dei pacchetti o il nome dei file generati
-            FIRMWARE_DIR_NAME=$(find ${{ env.REPO_DIR }}/bin/targets/ -name "packages.adb" | awk -F'/targets/' '{print $1}' | xargs basename)
+          # Estraiamo il nome della cartella del firmware specifico (es. 2026-05-17_17-05-2026-0805_next-r4.8.2.rss.mtk)
+          # Lo troviamo guardando i file dei pacchetti o il nome dei file generati
+          FIRMWARE_DIR_NAME=$(find ${{ env.REPO_DIR }}/bin/targets/ -name "packages.adb" | awk -F'/targets/' '{print $1}' | xargs basename)
 
-            # Costruiamo il percorso chilometrico finale dentro la cartella public/
-            # Struttura: public/snapshot/17-05-2026-0805/2026-05-17_17-..._next-r4.8.2.rss.mtk/targets/mediatek/filogic/packages/
-            TARGET_PATH="$BASE_DIR/$TS/$FIRMWARE_DIR_NAME/targets/mediatek/filogic/packages"
-          
-            echo "📁 Il percorso di destinazione sarà: $TARGET_PATH"
-            mkdir -p "$TARGET_PATH"
+          # Costruiamo il percorso chilometrico finale dentro la cartella public/
+          # Struttura: public/snapshot/17-05-2026-0805/2026-05-17_17-..._next-r4.8.2.rss.mtk/targets/mediatek/filogic/packages/
+          TARGET_PATH="$BASE_DIR/$TS/$FIRMWARE_DIR_NAME/targets/mediatek/filogic/packages"
+        
+          echo "📁 Il percorso di destinazione sarà: $TARGET_PATH"
+          mkdir -p "$TARGET_PATH"
 
-            # 3. Copia di TUTTI i pacchetti (.apk / .ipk) nella cartella dei pacchetti
-            find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
-  
-            # 4. Gestione Indice APK (packages.adb)
-            INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
-          
-            if [ -f "$INDEX_FILE" ]; then
-              echo "✅ Indice trovato, copia nel percorso chilometrico"
-              cp "$INDEX_FILE" "$TARGET_PATH/APKINDEX.tar.gz"
-              cp "$INDEX_FILE" "$TARGET_PATH/packages.adb"
-            else
-              echo "❌ ERRORE: packages.adb non trovato!"
-              exit 1
-            fi
+          # 3. Copia di TUTTI i pacchetti (.apk / .ipk) nella cartella dei pacchetti
+          find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
 
-            # 5. COPIA SATELLITE (Opzionale ma consigliata)
-            # Copiamo l'indice packages.adb ANCHE nella cartella principale ($BASE_DIR/$TS)
-            # così se in futuro rimetti a posto gli URL, non si spacca nulla.
-            mkdir -p "$BASE_DIR/$TS"
-            cp "$INDEX_FILE" "$BASE_DIR/$TS/packages.adb"
+          # 4. Gestione Indice APK (packages.adb)
+          INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
+        
+          if [ -f "$INDEX_FILE" ]; then
+            echo "✅ Indice trovato, copia nel percorso chilometrico"
+            cp "$INDEX_FILE" "$TARGET_PATH/APKINDEX.tar.gz"
+            cp "$INDEX_FILE" "$TARGET_PATH/packages.adb"
+          else
+            echo "❌ ERRORE: packages.adb non trovato!"
+            exit 1
+          fi
+
+          # 5. COPIA SATELLITE (Opzionale ma consigliata)
+          # Copiamo l'indice packages.adb ANCHE nella cartella principale ($BASE_DIR/$TS)
+          # così se in futuro rimetti a posto gli URL, non si spacca nulla.
+          mkdir -p "$BASE_DIR/$TS"
+          cp "$INDEX_FILE" "$BASE_DIR/$TS/packages.adb"
 
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4.0.0
