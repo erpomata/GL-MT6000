@@ -426,50 +426,50 @@ jobs:
           env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-        - name: Deploy to GitHub Pages
-          run: |
-            # 1. Setup Variabili e Cartelle Base
-            TS="${{ steps.timestamp.outputs.ts }}"
-            BASE_DIR="public/${{ env.BUILD_TYPE }}"
-           
-            echo "🚀 Preparazione Deploy speculare per build: $TS"
- 
-            # 🎯 2. RICOSTRUZIONE STRINGA CHILOMETRICA DA FINAL_TAG
-            # FINAL_TAG è ad esempio: snapshot-17-05-2026-1635-next-r4.8.2.rss.mtk
-            # Dobbiamo trasformarlo in: 2026-05-17_17-05-2026-1635_next-r4.8.2.rss.mtk
+      - name: Deploy to GitHub Pages
+        run: |
+          # 1. Setup Variabili e Cartelle Base
+          TS="${{ steps.timestamp.outputs.ts }}"
+          BASE_DIR="public/${{ env.BUILD_TYPE }}"
           
-            # Estraiamo la parte della versione (tutto ciò che viene dopo il timestamp) -> next-r4.8.2.rss.mtk
-            VERSION_PART=$(echo "${{ env.FINAL_TAG }}" | sed "s/${{ env.BUILD_TYPE }}-$TS-//")
-          
-            # Componiamo il nome esatto della cartella usando le variabili d'ambiente già disponibili
-            FIRMWARE_DIR_NAME="${{ env.DATE }}_${TS}_${VERSION_PART}"
-          
-            # Costruiamo il percorso chilometrico finale dentro la cartella public/
-            TARGET_PATH="$BASE_DIR/$TS/$FIRMWARE_DIR_NAME/targets/mediatek/filogic/packages"
-          
-            echo "📁 Il percorso di destinazione calcolato è: $TARGET_PATH"
-            mkdir -p "$TARGET_PATH"
+          echo "🚀 Preparazione Deploy speculare per build: $TS"
 
-            # 3. Copia di TUTTI i pacchetti dalla cartella release (usiamo una ricerca più flessibile)
-            if [ -d "${{ env.REPO_DIR }}/release/packages" ]; then
-              find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
-            else
-              echo "⚠️ Cartella release/packages non trovata, cerco in tutto il buildroot..."
-              find ${{ env.REPO_DIR }} -name "*.apk" -o -name "*.ipk" -exec cp -v {} "$TARGET_PATH/" \;
-            fi
-
-            # 4. Gestione Indice APK (packages.adb)
-            # Lo cerchiamo ovunque dentro la struttura dei pacchetti generati per essere sicuri al 100%
-            INDEX_FILE=$(find ${{ env.REPO_DIR }} -name "packages.adb" | head -n 1)
+          # 🎯 2. RICOSTRUZIONE STRINGA CHILOMETRICA DA FINAL_TAG
+          # FINAL_TAG è ad esempio: snapshot-17-05-2026-1635-next-r4.8.2.rss.mtk
+          # Dobbiamo trasformarlo in: 2026-05-17_17-05-2026-1635_next-r4.8.2.rss.mtk
           
-            if [ -f "$INDEX_FILE" ]; then
-              echo "✅ Indice trovato in $INDEX_FILE, copia nel percorso chilometrico"
-              cp "$INDEX_FILE" "$TARGET_PATH/APKINDEX.tar.gz"
-              cp "$INDEX_FILE" "$TARGET_PATH/packages.adb"
-            else
-              echo "❌ ERRORE: packages.adb non trovato da nessuna parte!"
-              exit 1
-            fi
+          # Estraiamo la parte della versione (tutto ciò che viene dopo il timestamp) -> next-r4.8.2.rss.mtk
+          VERSION_PART=$(echo "${{ env.FINAL_TAG }}" | sed "s/${{ env.BUILD_TYPE }}-$TS-//")
+          
+          # Componiamo il nome esatto della cartella usando le variabili d'ambiente già disponibili
+          FIRMWARE_DIR_NAME="${{ env.DATE }}_${TS}_${VERSION_PART}"
+          
+          # Costruiamo il percorso chilometrico finale dentro la cartella public/
+          TARGET_PATH="$BASE_DIR/$TS/$FIRMWARE_DIR_NAME/targets/mediatek/filogic/packages"
+          
+          echo "📁 Il percorso di destinazione calcolato è: $TARGET_PATH"
+          mkdir -p "$TARGET_PATH"
+
+          # 3. Copia di TUTTI i pacchetti dalla cartella release (usiamo una ricerca più flessibile)
+          if [ -d "${{ env.REPO_DIR }}/release/packages" ]; then
+            find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
+          else
+            echo "⚠️ Cartella release/packages non trovata, cerco in tutto il buildroot..."
+            find ${{ env.REPO_DIR }} -name "*.apk" -o -name "*.ipk" -exec cp -v {} "$TARGET_PATH/" \;
+          fi
+
+          # 4. Gestione Indice APK (packages.adb)
+          # Lo cerchiamo ovunque dentro la struttura dei pacchetti generati per essere sicuri al 100%
+          INDEX_FILE=$(find ${{ env.REPO_DIR }} -name "packages.adb" | head -n 1)
+          
+          if [ -f "$INDEX_FILE" ]; then
+            echo "✅ Indice trovato in $INDEX_FILE, copia nel percorso chilometrico"
+            cp "$INDEX_FILE" "$TARGET_PATH/APKINDEX.tar.gz"
+            cp "$INDEX_FILE" "$TARGET_PATH/packages.adb"
+          else
+            echo "❌ ERRORE: packages.adb non trovato da nessuna parte!"
+            exit 1
+          fi
 
           # 5. COPIA SATELLITE
           mkdir -p "$BASE_DIR/$TS"
