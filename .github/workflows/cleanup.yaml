@@ -35,18 +35,44 @@ jobs:
           # 1. PULIZIA WORKFLOW RUNS (Solo quelli falliti/annullati del proprio tipo)
           # Specifichiamo il file workflow relativo al build_type
           echo "🔍 Pulizia log workflow per ${{ matrix.build_type }}.yaml"
-          for status in failure cancelled skipped timed_out; do
-            echo "🔍 Analisi log con stato: $status..."
-            RUNS=$(gh run list --workflow "${{ matrix.build_type }}.yaml" --status $status --limit 100 --json databaseId --jq '.[].databaseId')
-            
-            if [ -n "$RUNS" ]; then
-              for run_id in $RUNS; do
-                echo "$RUNS" | xargs -P 4 -I {} sh -c 'echo "Eliminazione run ID: {}" && gh run delete {} || true'
-              done
-            else
-              echo "✅ Nessun run da eliminare per $status."
-            fi
+          # 1. Recuperiamo le ultime 50 run concluse (sia success che cancelled)
+          # 1. Chiediamo un limite alto (es. 50) per scansionare lo storico recente
+          echo "🔍 Analisi delle ultime run per identificare i controlli a vuoto..."
+          RUNS=$(gh run list --workflow "${{ matrix.build_type }}.yaml" --limit 50 --json databaseId,conclusion \
+            | jq -r '.[] | select(.conclusion=="success" or .conclusion=="cancelled") | .databaseId')
+
+          # Inizializziamo un contatore per contare quante build REALI (andate a buon fine) vogliamo tenere
+          BUILD_REALI_TENUTE=0
+          LIMITE_TENUTE="${{ env.NUM_RELEASE_TENUTE }}" # Assicurati che sia una variabile d'ambiente o usa la tua sintassi
+
+          if [ -n "$RUNS" ]; then
+            for run_id in $RUNS; do
+              # Salvaguardia: non toccare la run corrente
+              if [ "$run_id" = "${{ github.run_id }}" ]; then continue; fi
+
+              # Controlliamo lo stato del job 'build'
+              BUILD_CONCLUSION=$(gh api repos/${{ github.repository }}/actions/runs/$run_id/jobs --jq '.jobs[] | select(.name=="build") | .conclusion' 2>/dev/null || echo "")
+
+              if [ "$BUILD_CONCLUSION" = "success" ]; then
+                # È una build reale andata a buon fine!
+                BUILD_REALI_TENUTE=$((BUILD_REALI_TENUTE + 1))
+              
+                if [ "$BUILD_REALI_TENUTE" -le "$LIMITE_TENUTE" ]; then
+                  echo "🟢 Run $run_id è una delle ultime $LIMITE_TENUTE build reali. La conservo."
+                  continue
+                fi
+              fi
+
+              # Se il job 'build' è 'skipped' (controllo a vuoto) OPPURE se è una build reale success
+              # ma abbiamo già superato il numero massimo di release da tenere, allora si cancella.
+              if [ "$BUILD_CONCLUSION" = "skipped" ] || [ -z "$BUILD_CONCLUSION" ] || [ "$BUILD_REALI_TENUTE" -gt "$LIMITE_TENUTE" ]; then
+                echo "🗑️ Eliminazione run ID: $run_id (Stato build: ${BUILD_CONCLUSION:-annullata / vecchia})"
+               gh run delete "$run_id" || true
+              fi
           done
+        else
+          echo "✅ Nessuna run trovata nel raggio d'azione."
+        fi
 
           #Lo faccio solo per snapshot altrimenti lo fanno iparallelo due processi e si richiano casini
           if [ "${{ matrix.build_type }}" == "snapshot" ]; then
