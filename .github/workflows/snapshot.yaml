@@ -431,50 +431,49 @@ jobs:
             # 1. Setup Variabili e Cartelle Base
             TS="${{ steps.timestamp.outputs.ts }}"
             BASE_DIR="public/${{ env.BUILD_TYPE }}"
-          
+           
             echo "🚀 Preparazione Deploy speculare per build: $TS"
-
-            # 🔍 2. RILEVAMENTO DINAMICO DEL PERCORSO CHILOMETRICO
-            # Cerchiamo la cartella dei pacchetti generata da OpenWrt dentro bin/targets/
-            # Questo comando trova il percorso reale (es. openwrt/bin/targets/mediatek/filogic)
-            TARGET_BIN_DIR=$(find ${{ env.REPO_DIR }}/bin/targets -type d -name "filogic" | head -n 1)
+ 
+            # 🎯 2. RICOSTRUZIONE STRINGA CHILOMETRICA DA FINAL_TAG
+            # FINAL_TAG è ad esempio: snapshot-17-05-2026-1635-next-r4.8.2.rss.mtk
+            # Dobbiamo trasformarlo in: 2026-05-17_17-05-2026-1635_next-r4.8.2.rss.mtk
           
-            if [ -z "$TARGET_BIN_DIR" ]; then
-              echo "❌ ERRORE: Impossibile trovare la cartella dei pacchetti del target!"
-              exit 1
-            fi
-
-            # Estraiamo il nome della cartella del firmware specifico (es. 2026-05-17_17-05-2026-0805_next-r4.8.2.rss.mtk)
-            # Lo troviamo guardando i file dei pacchetti o il nome dei file generati
-            FIRMWARE_DIR_NAME=$(find ${{ env.REPO_DIR }}/bin/targets/ -name "packages.adb" | awk -F'/targets/' '{print $1}' | xargs basename)
-
+            # Estraiamo la parte della versione (tutto ciò che viene dopo il timestamp) -> next-r4.8.2.rss.mtk
+            VERSION_PART=$(echo "${{ env.FINAL_TAG }}" | sed "s/${{ env.BUILD_TYPE }}-$TS-//")
+          
+            # Componiamo il nome esatto della cartella usando le variabili d'ambiente già disponibili
+            FIRMWARE_DIR_NAME="${{ env.DATE }}_${TS}_${VERSION_PART}"
+          
             # Costruiamo il percorso chilometrico finale dentro la cartella public/
-            # Struttura: public/snapshot/17-05-2026-0805/2026-05-17_17-..._next-r4.8.2.rss.mtk/targets/mediatek/filogic/packages/
             TARGET_PATH="$BASE_DIR/$TS/$FIRMWARE_DIR_NAME/targets/mediatek/filogic/packages"
           
-            echo "📁 Il percorso di destinazione sarà: $TARGET_PATH"
+            echo "📁 Il percorso di destinazione calcolato è: $TARGET_PATH"
             mkdir -p "$TARGET_PATH"
 
-            # 3. Copia di TUTTI i pacchetti (.apk / .ipk) nella cartella dei pacchetti
-            find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
-  
+            # 3. Copia di TUTTI i pacchetti dalla cartella release (usiamo una ricerca più flessibile)
+            if [ -d "${{ env.REPO_DIR }}/release/packages" ]; then
+              find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
+            else
+              echo "⚠️ Cartella release/packages non trovata, cerco in tutto il buildroot..."
+              find ${{ env.REPO_DIR }} -name "*.apk" -o -name "*.ipk" -exec cp -v {} "$TARGET_PATH/" \;
+            fi
+
             # 4. Gestione Indice APK (packages.adb)
-            INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
+            # Lo cerchiamo ovunque dentro la struttura dei pacchetti generati per essere sicuri al 100%
+            INDEX_FILE=$(find ${{ env.REPO_DIR }} -name "packages.adb" | head -n 1)
           
             if [ -f "$INDEX_FILE" ]; then
-              echo "✅ Indice trovato, copia nel percorso chilometrico"
+              echo "✅ Indice trovato in $INDEX_FILE, copia nel percorso chilometrico"
               cp "$INDEX_FILE" "$TARGET_PATH/APKINDEX.tar.gz"
               cp "$INDEX_FILE" "$TARGET_PATH/packages.adb"
             else
-              echo "❌ ERRORE: packages.adb non trovato!"
+              echo "❌ ERRORE: packages.adb non trovato da nessuna parte!"
               exit 1
             fi
 
-            # 5. COPIA SATELLITE (Opzionale ma consigliata)
-            # Copiamo l'indice packages.adb ANCHE nella cartella principale ($BASE_DIR/$TS)
-            # così se in futuro rimetti a posto gli URL, non si spacca nulla.
-            mkdir -p "$BASE_DIR/$TS"
-            cp "$INDEX_FILE" "$BASE_DIR/$TS/packages.adb"
+          # 5. COPIA SATELLITE
+          mkdir -p "$BASE_DIR/$TS"
+          cp "$INDEX_FILE" "$BASE_DIR/$TS/packages.adb"
 
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4.0.0
