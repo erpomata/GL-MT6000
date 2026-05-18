@@ -31,7 +31,8 @@ jobs:
             echo "<h1>Cronologia Build $TYPE</h1><hr><ul>" >> "$MAIN_INDEX"
             
             # Elenca cartelle dalla più recente
-            find "$TYPE" -type d 2>/dev/null | while IFS= read -r dirpath; do
+
+            find "$TYPE" -type d -links 2 ! -path "$TYPE" | while IFS= read -r dirpath; do
             [ "$dirpath" = "$TYPE" ] && continue
         
             relpath="${dirpath#$TYPE/}"
