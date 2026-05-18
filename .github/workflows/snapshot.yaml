@@ -72,16 +72,16 @@ jobs:
           if [ -f "${{ env.CONFIG_FILE }}" ]; then
             CONFIG_HASH=$(sha256sum ${{ env.CONFIG_FILE }} | awk '{print $1}')
           else
-            CONFIG_HASH="config_non_trovato"
+            CONFIG_HASH="CONFIG_HASH config_non_trovato"
           fi
           echo "config_hash=$CONFIG_HASH" >> $GITHUB_OUTPUT
 
           # 📄 Calcola l'hash del tuo file BUILD_TYPE.yaml (Assicurati che il file sia già scaricato/presente in questa fase)
           # Se il tuo config si chiama diversamente o è in una cartella, aggiorna il percorso qui
           if [ -f "${{ env.BUILD_TYPE }}.yaml" ]; then
-            SCRIPT_HASH=$(sha256sum ${{ env.BUILD_TYPE }}.yaml | awk '{print $1}')
+            SCRIPT_HASH=$(sha256sum /.github/workflows/${{ env.BUILD_TYPE }}.yaml | awk '{print $1}')
           else
-            SCRIPT_HASH="config_non_trovato"
+            SCRIPT_HASH="SCRIPT_HASH config_non_trovato"
           fi
           echo "script_hash=$SCRIPT_HASH" >> $GITHUB_OUTPUT
 
