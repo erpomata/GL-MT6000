@@ -31,19 +31,31 @@ jobs:
             echo "<h1>Cronologia Build $TYPE</h1><hr><ul>" >> "$MAIN_INDEX"
             
             # Elenca cartelle dalla più recente
-            ls -dt "$TYPE"/*/ 2>/dev/null | while read dirpath; do
-              dirname=$(basename "$dirpath")
-              echo "<li><a href=\"$dirname/\">$dirname/</a></li>" >> "$MAIN_INDEX"
-              
-              # 2. Sotto-indice per ogni specifica build (Lista file APK/Bin)
-              SPEC_INDEX="$dirpath/index.html"
-              echo "<html><head><title>Build $dirname</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$SPEC_INDEX"
-              echo "<h2>Files in $dirname</h2><p><a href='../'>.. Torna su</a></p><hr><ul>" >> "$SPEC_INDEX"
-              ls -1 "$dirpath" | grep -v "index.html" | while read file; do
-                echo "<li><a href=\"$file\">$file</a></li>" >> "$SPEC_INDEX"
+            find "$TYPE" -type d 2>/dev/null | while IFS= read -r dirpath; do
+            [ "$dirpath" = "$TYPE" ] && continue
+        
+            relpath="${dirpath#$TYPE/}"
+        
+            echo "<li><a href=\"$relpath/\">$relpath/</a></li>" >> "$MAIN_INDEX"
+        
+            SPEC_INDEX="$dirpath/index.html"
+        
+            {
+              echo "<html><head><title>Build $relpath</title></head><body style='font-family:sans-serif; padding:20px;'>"
+              echo "<h2>Files in $relpath</h2>"
+              echo "<p><a href='../'>.. Torna su</a></p><hr><ul>"
+        
+              for file in "$dirpath"/*; do
+                fname=$(basename "$file")
+                [ "$fname" = "index.html" ] && continue
+                echo "<li><a href=\"$fname\">$fname</a></li>"
               done
-              echo "</ul></body></html>" >> "$SPEC_INDEX"
-            done
+        
+              echo "</ul></body></html>"
+            } > "$SPEC_INDEX"
+        
+          done
+
             
             echo "</ul><p><a href='../'>🏠 Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
           }
