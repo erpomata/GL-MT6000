@@ -414,7 +414,7 @@ jobs:
             - **Branch:** `${{ needs.check.outputs.branch }}`
             - **Commit SHA:** `${{ needs.check.outputs.commit }}`
             - **${{ env.CONFIG_FILE }}:** `${{ needs.check.outputs.config_hash }}`
-            - **${{ env.CONFIG_FILE }}.yaml:** `${{ needs.check.outputs.script_hash }}`
+            - **${{ env.BUILD_TYPE }}.yaml:** `${{ needs.check.outputs.script_hash }}`
             - **Date:** "${{ steps.timestamp.outputs.ts }}"
             - **Type:** ${{ env.BUILD_TYPE }}
             ---
