@@ -1,73 +1,86 @@
 name: Rebuild Pages Index
 
 on:
-  workflow_dispatch: # Permette l'avvio manuale
-  schedule:
-    - cron: "*/5 * * * *" # Gira ogni 5 minuti
+  push:
+    branches:
+      - gh-pages
+  workflow_dispatch:
 
 jobs:
   reindex:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Checkout gh-pages
         uses: actions/checkout@v4
         with:
           ref: gh-pages
 
+      # ✅ BLOCCO ANTI-LOOP
+      - name: Skip self-trigger
+        run: |
+          AUTHOR=$(git log -1 --pretty=%an)
+          MESSAGE=$(git log -1 --pretty=%s)
+
+          echo "Author: $AUTHOR"
+          echo "Message: $MESSAGE"
+
+          if [ "$AUTHOR" = "github-actions[bot]" ] && echo "$MESSAGE" | grep -q "Update Pages Index"; then
+            echo "⏭️ Skip: commit generato dal workflow"
+            exit 0
+          fi
+
       - name: Generate HTML Indices
         run: |
-          # Funzione per generare l'indice di una categoria (main o snapshot)
           generate_for() {
-              local TYPE=$1
-              
-              if [ ! -d "$TYPE" ]; then return; fi
-              
-              echo "📊 Indicizzazione: $TYPE"
-              
-              MAIN_INDEX="$TYPE/index.html"
-              echo "<html><head><title>Build History - $TYPE</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$MAIN_INDEX"
-              echo "<h1>Cronologia Build $TYPE</h1><hr><ul>" >> "$MAIN_INDEX"
-              
-              find "$TYPE" -type d ! -path "$TYPE" | while IFS= read -r dirpath; do
-                
-                relpath="${dirpath#$TYPE/}"
-                SPEC_INDEX="$dirpath/index.html"
-                
-                # ✅ Se ha sottodirectory → NON è leaf
-                if find "$dirpath" -mindepth 1 -type d | read; then
-                  # opzionale: cancella eventuale index
-                  rm -f "$SPEC_INDEX"
-                  continue
-                fi
+            local TYPE=$1
+            
+            [ ! -d "$TYPE" ] && return
+            
+            echo "📊 Indicizzazione: $TYPE"
+            
+            MAIN_INDEX="$TYPE/index.html"
+            echo "<html><head><title>Build History - $TYPE</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$MAIN_INDEX"
+            echo "<h1>Cronologia Build $TYPE</h1><hr><ul>" >> "$MAIN_INDEX"
 
-                # ✅ LEAF → aggiungi al main index
-                echo "<li><a href=\"$relpath/\">$relpath/</a></li>" >> "$MAIN_INDEX"
+            find "$TYPE" -type d ! -path "$TYPE" | while IFS= read -r dirpath; do
+              
+              relpath="${dirpath#$TYPE/}"
+              SPEC_INDEX="$dirpath/index.html"
 
-                # ✅ Cancella e ricrea index
+              # ✅ Se NON è leaf → cancella eventuale index
+              if [ -n "$(find "$dirpath" -mindepth 1 -type d -print -quit)" ]; then
                 rm -f "$SPEC_INDEX"
+                continue
+              fi
 
-                {
-                  echo "<html><head><title>Build $relpath</title></head><body style='font-family:sans-serif; padding:20px;'>"
-                  echo "<h2>Files in $relpath</h2>"
-                  echo "<p><a href='../'>.. Torna su</a></p><hr><ul>"
+              # ✅ Leaf → aggiungi al main index
+              echo "<li><a href=\"$relpath/\">$relpath/</a></li>" >> "$MAIN_INDEX"
 
-                  for file in "$dirpath"/*; do
-                    fname=$(basename "$file")
-                    [ "$fname" = "index.html" ] && continue
-                    echo "<li><a href=\"$fname\">$fname</a></li>"
-                  done
+              # ✅ Rigenera index
+              rm -f "$SPEC_INDEX"
 
-                  echo "</ul></body></html>"
-                } > "$SPEC_INDEX"
+              {
+                echo "<html><head><title>Build $relpath</title></head><body style='font-family:sans-serif; padding:20px;'>"
+                echo "<h2>Files in $relpath</h2>"
+                echo "<p><a href='../'>.. Torna su</a></p><hr><ul>"
 
-              done
+                for file in "$dirpath"/*; do
+                  fname=$(basename "$file")
+                  [ "$fname" = "index.html" ] && continue
+                  echo "<li><a href=\"$fname\">$fname</a></li>"
+                done
 
-              echo "</ul><p><a href='../'>🏠 Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
-            }
+                echo "</ul></body></html>"
+              } > "$SPEC_INDEX"
 
-          # Eseguiamo per entrambi i rami
+            done
+
+            echo "</ul><p><a href='../'>🏠 Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
+          }
+
           generate_for "main"
           generate_for "snapshot"
 
@@ -75,10 +88,12 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
+
           git add .
-          if ! git diff --quiet --exit-code --cached; then
+
+          if ! git diff --quiet --cached; then
             git commit -m "🌎 Update Pages Index (Auto-generated)"
             git push origin gh-pages
           else
-            echo "Nessun cambiamento nell'indice."
+            echo "✅ Nessun cambiamento"
           fi
