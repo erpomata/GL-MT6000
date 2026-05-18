@@ -32,6 +32,7 @@ jobs:
         with:
           sparse-checkout: |
             ${{ env.CONFIG_FILE }}
+            /.github/workflows/${{ env.BUILD_TYPE }}.yaml
           sparse-checkout-cone-mode: false
 
       - name: Detect latest branch and commit
