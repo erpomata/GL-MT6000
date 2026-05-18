@@ -20,46 +20,52 @@ jobs:
         run: |
           # Funzione per generare l'indice di una categoria (main o snapshot)
           generate_for() {
-            local TYPE=$1
-            if [ ! -d "$TYPE" ]; then return; fi
-            
-            echo "📊 Indicizzazione: $TYPE"
-            
-            # 1. Indice principale della categoria (Lista delle build)
-            MAIN_INDEX="$TYPE/index.html"
-            echo "<html><head><title>Build History - $TYPE</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$MAIN_INDEX"
-            echo "<h1>Cronologia Build $TYPE</h1><hr><ul>" >> "$MAIN_INDEX"
-            
-            # Elenca cartelle dalla più recente
+              local TYPE=$1
+              
+              if [ ! -d "$TYPE" ]; then return; fi
+              
+              echo "📊 Indicizzazione: $TYPE"
+              
+              MAIN_INDEX="$TYPE/index.html"
+              echo "<html><head><title>Build History - $TYPE</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$MAIN_INDEX"
+              echo "<h1>Cronologia Build $TYPE</h1><hr><ul>" >> "$MAIN_INDEX"
+              
+              find "$TYPE" -type d ! -path "$TYPE" | while IFS= read -r dirpath; do
+                
+                relpath="${dirpath#$TYPE/}"
+                SPEC_INDEX="$dirpath/index.html"
+                
+                # ✅ Se ha sottodirectory → NON è leaf
+                if find "$dirpath" -mindepth 1 -type d | read; then
+                  # opzionale: cancella eventuale index
+                  rm -f "$SPEC_INDEX"
+                  continue
+                fi
 
-            find "$TYPE" -type d -links 2 ! -path "$TYPE" | while IFS= read -r dirpath; do
-            [ "$dirpath" = "$TYPE" ] && continue
-        
-            relpath="${dirpath#$TYPE/}"
-        
-            echo "<li><a href=\"$relpath/\">$relpath/</a></li>" >> "$MAIN_INDEX"
-        
-            SPEC_INDEX="$dirpath/index.html"
-        
-            {
-              echo "<html><head><title>Build $relpath</title></head><body style='font-family:sans-serif; padding:20px;'>"
-              echo "<h2>Files in $relpath</h2>"
-              echo "<p><a href='../'>.. Torna su</a></p><hr><ul>"
-        
-              for file in "$dirpath"/*; do
-                fname=$(basename "$file")
-                [ "$fname" = "index.html" ] && continue
-                echo "<li><a href=\"$fname\">$fname</a></li>"
+                # ✅ LEAF → aggiungi al main index
+                echo "<li><a href=\"$relpath/\">$relpath/</a></li>" >> "$MAIN_INDEX"
+
+                # ✅ Cancella e ricrea index
+                rm -f "$SPEC_INDEX"
+
+                {
+                  echo "<html><head><title>Build $relpath</title></head><body style='font-family:sans-serif; padding:20px;'>"
+                  echo "<h2>Files in $relpath</h2>"
+                  echo "<p><a href='../'>.. Torna su</a></p><hr><ul>"
+
+                  for file in "$dirpath"/*; do
+                    fname=$(basename "$file")
+                    [ "$fname" = "index.html" ] && continue
+                    echo "<li><a href=\"$fname\">$fname</a></li>"
+                  done
+
+                  echo "</ul></body></html>"
+                } > "$SPEC_INDEX"
+
               done
-        
-              echo "</ul></body></html>"
-            } > "$SPEC_INDEX"
-        
-          done
 
-            
-            echo "</ul><p><a href='../'>🏠 Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
-          }
+              echo "</ul><p><a href='../'>🏠 Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
+            }
 
           # Eseguiamo per entrambi i rami
           generate_for "main"
