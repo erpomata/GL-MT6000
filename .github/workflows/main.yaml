@@ -25,12 +25,14 @@ jobs:
       commit: ${{ steps.detect.outputs.commit }}
       build: ${{ steps.detect.outputs.build }}
       config_hash: ${{ steps.detect.outputs.config_hash }}
+      script_hash: ${{ steps.detect.outputs.script_hash }}
     steps:
       - name: Scarico il file per ${{ env.CONFIG_FILE }} controllare se è stato modificato
         uses: actions/checkout@v5
         with:
           sparse-checkout: |
             ${{ env.CONFIG_FILE }}
+            /.github/workflows/${{ env.BUILD_TYPE }}.yaml
           sparse-checkout-cone-mode: false
 
       - name: Detect latest branch and commit
@@ -54,9 +56,18 @@ jobs:
           if [ -f "${{ env.CONFIG_FILE }}" ]; then
             CONFIG_HASH=$(sha256sum ${{ env.CONFIG_FILE }} | awk '{print $1}')
           else
-            CONFIG_HASH="config_non_trovato"
+            CONFIG_HASH="CONFIG_HASH config_non_trovato"
           fi
           echo "config_hash=$CONFIG_HASH" >> $GITHUB_OUTPUT
+
+          # 📄 Calcola l'hash del tuo file BUILD_TYPE.yaml (Assicurati che il file sia già scaricato/presente in questa fase)
+          # Se il tuo config si chiama diversamente o è in una cartella, aggiorna il percorso qui
+          if [ -f ".github/workflows/${{ env.BUILD_TYPE }}.yaml" ]; then
+            SCRIPT_HASH=$(sha256sum .github/workflows/${{ env.BUILD_TYPE }}.yaml | awk '{print $1}')
+          else
+            SCRIPT_HASH="SCRIPT_HASH config_non_trovato"
+          fi
+          echo "script_hash=$SCRIPT_HASH" >> $GITHUB_OUTPUT
 
           # 📦 Controlla se lo SHA è già menzionato nell'ultima release del TUO repo
           LAST_BODY=$(gh api repos/${{ github.repository }}/releases --jq ". | map(select(.tag_name | test(\"${{ env.BUILD_TYPE }}\"; \"i\"))) | .[0].body" 2>/dev/null || echo "")
@@ -64,10 +75,12 @@ jobs:
           # 🔍 Verifica le presenze
           COMMIT_MATCH=$(echo "$LAST_BODY" | grep -q "$COMMIT" && echo "yes" || echo "no")
           CONFIG_MATCH=$(echo "$LAST_BODY" | grep -q "$CONFIG_HASH" && echo "yes" || echo "no")
+          SCRIPT_MATCH=$(echo "$LAST_BODY" | grep -q "$SCRIPT_HASH" && echo "yes" || echo "no")
 
-          if [ "$COMMIT_MATCH" = "yes" ] && [ "$CONFIG_MATCH" = "yes" ]; then
+          if [ "$COMMIT_MATCH" = "yes" ] && [ "$CONFIG_MATCH" = "yes" ] && [ "$SCRIPT_MATCH" = "yes" ]; then
             echo "build=false" >> $GITHUB_OUTPUT
-            echo "✅ Nessun nuovo commit e .config invariato. Build saltata."
+            echo "✅ Nessun nuovo commit, .config o script invariato. Build saltata."
+            gh run cancel ${{ github.run_id }}
           else
             echo "build=true" >> $GITHUB_OUTPUT
             echo "🚀 Cambiamenti rilevati! Procedo alla build."
@@ -79,6 +92,10 @@ jobs:
             
             if [ "$CONFIG_MATCH" = "no" ]; then
               echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
+            fi
+
+            if [ "$SCRIPT_HASH" = "no" ]; then
+              echo "  - File script locale modificato (Nuovo Hash: $SCRIPT_MATCH)"
             fi
           fi
 
@@ -124,12 +141,11 @@ jobs:
         uses: actions/cache@v5.0.5
         with:
           path: |
-              ${{ github.workspace }}/${{ env.BUILD_TYPE }}/dl
-              ${{ github.workspace }}/${{ env.BUILD_TYPE }}/.ccache_${{ env.BUILD_TYPE }}
-          # Usiamo le variabili BUILDER_REPO e CONFIG_FILE per creare il percorso completo
-          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(format('{0}/{1}', env.BUILDER_REPO, env.CONFIG_FILE)) }}
+            ${{ env.REPO_DIR }}/dl
+            ${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}
+          key: ccache-${{ env.BUILD_TYPE }}-${{ hashFiles(env.CONFIG_FILE) }}
           restore-keys: |
-            ccache-${{ needs.check.outputs.branch }}-
+            ccache-${{ env.BUILD_TYPE }}-
 
       - name: Checkout Source ${{ needs.check.outputs.branch }}
         uses: actions/checkout@v5
@@ -177,6 +193,8 @@ jobs:
 
       - name: Apply Config and Versioning
         run: |
+          TS="${{ steps.timestamp.outputs.ts }}"
+          FINAL_URL="https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/$TS"
           cp ${{ env.BUILDER_REPO }}/${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
           cp ${{ env.BUILDER_REPO }}/.github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
 
@@ -231,8 +249,16 @@ jobs:
           echo 'CONFIG_VERSION_PRODUCT=""' >> .config
           
           # Definiamo la sottocartella specifica
-          SUBDIR="${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}"
-          echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/$SUBDIR\"" >> .config
+          echo "CONFIG_VERSION_REPO=\"$FINAL_URL\"" >> .config
+
+          # 3. IL FIX: Forziamo la creazione di un file distfeeds.conf personalizzato
+          # Questo sovrascrive il comportamento di default che aggiunge i path infiniti
+          #mkdir -p ${{ env.REPO_DIR }}/files/etc/opkg
+          #mkdir -p ${{ env.REPO_DIR }}/files/etc/apk/repositories.d
+
+          #echo "src/gz custom_generic $FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/opkg/distfeeds.conf
+          #echo "$FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/apk/repositories.d/custom.list
+          #echo "$FINAL_URL" > ${{ env.REPO_DIR }}/files/etc/apk/repositories.d/distfeeds.list
 
           # --- OTTIMIZZAZIONE CACHE ---
           # Abilita ccache nel sistema di build
@@ -241,6 +267,32 @@ jobs:
           #echo "CONFIG_CCACHE_DIR=\"$(pwd)/.ccache_${{ env.BUILD_TYPE }}\"" >> .config
           echo "CONFIG_CCACHE_DIR=\"${{ github.workspace }}/${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}\"" >> .config
           # ----------------------------
+
+
+          # 2. FIX PER APK (Snapshot recenti):
+          # Impediamo ai Makefile di base-files di appendere il path del target a VERSION_REPO
+          #if [ -f package/base-files/Makefile ]; then
+          #    sed -i 's|$(VERSION_REPO)/targets/$(BOARD)/$(SUBTARGET)/packages|$(VERSION_REPO)|g' package/base-files/Makefile
+          #    sed -i 's|$(VERSION_REPO)/targets/$(BOARD)/$(SUBTARGET)|$(VERSION_REPO)|g' package/base-files/Makefile
+          #fi
+
+          # 3. FIX PER OPKG (Per sicurezza, se ci fossero rimasugli):
+          #if [ -f package/base-files/image-config.in ]; then
+          #    sed -i 's|$(VERSION_REPO)/targets/$(BOARD)/$(SUBTARGET)/packages|$(VERSION_REPO)|g' package/base-files/image-config.in
+          #    sed -i 's|$(VERSION_REPO)/targets/$(BOARD)/$(SUBTARGET)|$(VERSION_REPO)|g' package/base-files/image-config.in
+          #fi
+
+          # 4. FIX NEL CORE DEL MECCANISMO DI VERSIONE:
+          # Corretto il refuso su $(BOARD)
+          #if [ -f include/version.mk ]; then
+          #    sed -i 's|/targets/$(BOARD)/$(SUBTARGET)/packages||g' include/version.mk
+          #    sed -i 's|/targets/$(BOARD)/$(SUBTARGET)||g' include/version.mk
+          #fi
+
+
+          # Impedisce ad APK di appendere il percorso del target all'URL del REPO
+          #sed -i 's|/targets/$(BOARD)/$(SUBTARGET)/packages||g' package/base-files/Makefile
+          #sed -i 's|/targets/$(BOARD)/$(SUBTARGET)||g' package/base-files/Makefile
 
           make defconfig
 
@@ -345,6 +397,7 @@ jobs:
             - **Branch:** `${{ needs.check.outputs.branch }}`
             - **Commit SHA:** `${{ needs.check.outputs.commit }}`
             - **${{ env.CONFIG_FILE }}:** `${{ needs.check.outputs.config_hash }}`
+            - **${{ env.BUILD_TYPE }}.yaml:** `${{ needs.check.outputs.script_hash }}`
             - **Date:** "${{ steps.timestamp.outputs.ts }}"
             - **Type:** ${{ env.BUILD_TYPE }}
             ---
@@ -360,31 +413,52 @@ jobs:
 
       - name: Deploy to GitHub Pages
         run: |
-          # 1. Setup Variabili e Cartelle
+          # 1. Setup Variabili e Cartelle Base
           TS="${{ steps.timestamp.outputs.ts }}"
           BASE_DIR="public/${{ env.BUILD_TYPE }}"
-          TARGET_PATH="$BASE_DIR/$TS"
           
-          echo "🚀 Preparazione Deploy per build: $TS"
+          echo "🚀 Preparazione Deploy speculare per build: $TS"
+
+          # 🎯 2. RICOSTRUZIONE STRINGA CHILOMETRICA DA FINAL_TAG
+          # FINAL_TAG è ad esempio: snapshot-17-05-2026-1635-next-r4.8.2.rss.mtk
+          # Dobbiamo trasformarlo in: 2026-05-17_17-05-2026-1635_next-r4.8.2.rss.mtk
           
-          # Creiamo la struttura completa (mkdir -p crea anche le cartelle padre)
+          # Estraiamo la parte della versione (tutto ciò che viene dopo il timestamp) -> next-r4.8.2.rss.mtk
+          VERSION_PART=$(echo "${{ env.FINAL_TAG }}" | sed "s/${{ env.BUILD_TYPE }}-$TS-//")
+          
+          # Componiamo il nome esatto della cartella usando le variabili d'ambiente già disponibili
+          FIRMWARE_DIR_NAME="${{ env.DATE }}_${TS}_${VERSION_PART}"
+          
+          # Costruiamo il percorso chilometrico finale dentro la cartella public/
+          TARGET_PATH="$BASE_DIR/$TS/$FIRMWARE_DIR_NAME/targets/mediatek/filogic/packages"
+          
+          echo "📁 Il percorso di destinazione calcolato è: $TARGET_PATH"
           mkdir -p "$TARGET_PATH"
 
-          # 2. Copia dei file (Firmware e Pacchetti)
-          find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
-          #find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} "$TARGET_PATH/" \;
+          # 3. Copia di TUTTI i pacchetti dalla cartella release (usiamo una ricerca più flessibile)
+          if [ -d "${{ env.REPO_DIR }}/release/packages" ]; then
+            find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
+          else
+            echo "⚠️ Cartella release/packages non trovata, cerco in tutto il buildroot..."
+            find ${{ env.REPO_DIR }} -name "*.apk" -o -name "*.ipk" -exec cp -v {} "$TARGET_PATH/" \;
+          fi
 
-          # 3. Gestione Indice APK per il router
-          INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
+          # 4. Gestione Indice APK (packages.adb)
+          # Lo cerchiamo ovunque dentro la struttura dei pacchetti generati per essere sicuri al 100%
+          INDEX_FILE=$(find ${{ env.REPO_DIR }} -name "packages.adb" | head -n 1)
           
           if [ -f "$INDEX_FILE" ]; then
-            echo "✅ Indice trovato, lo converto per il router"
+            echo "✅ Indice trovato in $INDEX_FILE, copia nel percorso chilometrico"
             cp "$INDEX_FILE" "$TARGET_PATH/APKINDEX.tar.gz"
             cp "$INDEX_FILE" "$TARGET_PATH/packages.adb"
           else
-            echo "❌ ERRORE: packages.adb non trovato!"
+            echo "❌ ERRORE: packages.adb non trovato da nessuna parte!"
             exit 1
           fi
+
+          # 5. COPIA SATELLITE
+          mkdir -p "$BASE_DIR/$TS"
+          cp "$INDEX_FILE" "$BASE_DIR/$TS/packages.adb"
 
       - name: Publish Pages
         uses: peaceiris/actions-gh-pages@v4.0.0
