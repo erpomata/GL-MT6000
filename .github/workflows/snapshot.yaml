@@ -79,8 +79,8 @@ jobs:
 
           # 📄 Calcola l'hash del tuo file BUILD_TYPE.yaml (Assicurati che il file sia già scaricato/presente in questa fase)
           # Se il tuo config si chiama diversamente o è in una cartella, aggiorna il percorso qui
-          if [ -f "${{ env.BUILD_TYPE }}.yaml" ]; then
-            SCRIPT_HASH=$(sha256sum /.github/workflows/${{ env.BUILD_TYPE }}.yaml | awk '{print $1}')
+          if [ -f ".github/workflows/${{ env.BUILD_TYPE }}.yaml" ]; then
+            SCRIPT_HASH=$(sha256sum .github/workflows/${{ env.BUILD_TYPE }}.yaml | awk '{print $1}')
           else
             SCRIPT_HASH="SCRIPT_HASH config_non_trovato"
           fi
