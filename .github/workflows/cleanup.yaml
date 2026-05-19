@@ -171,8 +171,6 @@ jobs:
             echo "✅ Le release sono già ottimizzate (meno di $NUM_RELEASE_TENUTE)."
           fi
 
-z
-
       - name: Commit and Push Changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
