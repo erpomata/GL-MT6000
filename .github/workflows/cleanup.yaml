@@ -134,23 +134,44 @@ jobs:
           RELEASES_TO_DELETE=$(gh release list --limit 100 | grep "^${{ matrix.build_type }}-" | awk '{print $1}' | tail -n +$((NUM_RELEASE_TENUTE + 1)))
           
           if [ -n "$RELEASES_TO_DELETE" ]; then
+
+            BASE_DIR="${{ matrix.build_type }}"
+
             for tag in $RELEASES_TO_DELETE; do
               echo "🗑️ Eliminazione release e tag: $tag"
+
+              # =========================================================
+              # 1. Estrai TIMESTAMP dal tag
+              # formato: snapshot-18-05-2026-0852-next-xxxx
+              # =========================================================
+              TS=$(echo "$tag" | cut -d'-' -f2-5)
+
+              echo "📁 Timestamp estratto: $TS"
+
+              # =========================================================
+              # 2. Cancella directory gh-pages collegata
+              # =========================================================
+
+              TARGET_PATH="$BASE_DIR/$TS"
+
+              if [ -d "$TARGET_PATH" ]; then
+                echo "🧹 Rimozione directory gh-pages: $TARGET_PATH"
+                rm -rf "$TARGET_PATH"
+              else
+                echo "⚠️ Directory non trovata: $TARGET_PATH"
+              fi
+
+              # =========================================================
+              # 3. Cancella release
+              # =========================================================
               gh release delete "$tag" --yes --cleanup-tag || true
             done
+
           else
             echo "✅ Le release sono già ottimizzate (meno di $NUM_RELEASE_TENUTE)."
           fi
 
-          # 3. PULIZIA CARTELLE LOCALI (gh-pages/main o gh-pages/snapshot)
-          if [ -d "${{ matrix.build_type }}" ]; then
-            echo "📂 Gestione file in gh-pages/${{ matrix.build_type }}/"
-            # Cancella i file più vecchi di 30 giorni nella cartella specifica
-            find "${{ matrix.build_type }}" -type f -mtime +30 -delete
-            echo "✅ Pulizia cartella locale completata."
-          else
-            echo "⚠️ Cartella ${{ matrix.build_type }} non trovata, salto questo step."
-          fi
+z
 
       - name: Commit and Push Changes
         run: |
