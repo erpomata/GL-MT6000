@@ -1,0 +1,450 @@
+name: OpenWrt MT6000 MAIN
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_dispatch: null
+  schedule:
+    - cron: "0 0 * * *"  
+
+env:
+  REPO: pesa1234/openwrt
+  CONFIG_FILE: mt6000.config
+  REPO_DIR: main
+  BUILD_TYPE: main
+  BUILDER_REPO: builder_repo
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+jobs:
+  # 🔍 JOB 1: Controlla se ci sono nuovi commit nel repo remoto
+  check:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      branch: ${{ steps.detect.outputs.branch }}
+      commit: ${{ steps.detect.outputs.commit }}
+      build: ${{ steps.detect.outputs.build }}
+      config_hash: ${{ steps.detect.outputs.config_hash }}
+      script_hash: ${{ steps.detect.outputs.script_hash }}
+    steps:
+      - name: Scarico il file per ${{ env.CONFIG_FILE }} controllare se è stato modificato
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            ${{ env.CONFIG_FILE }}
+            /.github/workflows/${{ env.BUILD_TYPE }}.yaml
+          sparse-checkout-cone-mode: false
+
+      - name: Detect latest branch and commit
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+          BRANCH=${{ env.REPO_DIR }}
+
+          # 🧠 Recupera lo SHA del commit
+          COMMIT=$(git ls-remote https://github.com/${{ env.REPO }}.git refs/heads/$BRANCH | awk '{print $1}')
+
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+
+          # 📄 Calcola l'hash del tuo file .config (Assicurati che il file sia già scaricato/presente in questa fase)
+          # Se il tuo config si chiama diversamente o è in una cartella, aggiorna il percorso qui
+          if [ -f "${{ env.CONFIG_FILE }}" ]; then
+            CONFIG_HASH=$(sha256sum ${{ env.CONFIG_FILE }} | awk '{print $1}')
+          else
+            CONFIG_HASH="CONFIG_HASH config_non_trovato"
+          fi
+          echo "config_hash=$CONFIG_HASH" >> $GITHUB_OUTPUT
+
+          # 📄 Calcola l'hash del tuo file BUILD_TYPE.yaml (Assicurati che il file sia già scaricato/presente in questa fase)
+          # Se il tuo config si chiama diversamente o è in una cartella, aggiorna il percorso qui
+          if [ -f ".github/workflows/${{ env.BUILD_TYPE }}.yaml" ]; then
+            SCRIPT_HASH=$(sha256sum .github/workflows/${{ env.BUILD_TYPE }}.yaml | awk '{print $1}')
+          else
+            SCRIPT_HASH="SCRIPT_HASH config_non_trovato"
+          fi
+          echo "script_hash=$SCRIPT_HASH" >> $GITHUB_OUTPUT
+
+          # 📦 Controlla se lo SHA è già menzionato nell'ultima release del TUO repo
+          LAST_BODY=$(gh api repos/${{ github.repository }}/releases --jq ". | map(select(.tag_name | test(\"${{ env.BUILD_TYPE }}\"; \"i\"))) | .[0].body" 2>/dev/null || echo "")
+
+          # 🔍 Verifica le presenze
+          COMMIT_MATCH=$(echo "$LAST_BODY" | grep -q "$COMMIT" && echo "yes" || echo "no")
+          CONFIG_MATCH=$(echo "$LAST_BODY" | grep -q "$CONFIG_HASH" && echo "yes" || echo "no")
+          SCRIPT_MATCH=$(echo "$LAST_BODY" | grep -q "$SCRIPT_HASH" && echo "yes" || echo "no")
+
+          if [ "$COMMIT_MATCH" = "yes" ] && [ "$CONFIG_MATCH" = "yes" ] && [ "$SCRIPT_MATCH" = "yes" ]; then
+            echo "build=false" >> $GITHUB_OUTPUT
+            echo "✅ Nessun nuovo commit, .config o script invariato. Build saltata."
+            gh run cancel ${{ github.run_id }}
+          else
+            echo "build=true" >> $GITHUB_OUTPUT
+            echo "🚀 Cambiamenti rilevati! Procedo alla build."
+            
+            # Usa if espliciti invece delle scorciatoie && per evitare errori con set -e
+            if [ "$COMMIT_MATCH" = "no" ]; then
+              echo "  - Nuovo commit upstream: $COMMIT"
+            fi
+            
+            if [ "$CONFIG_MATCH" = "no" ]; then
+              echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
+            fi
+
+            if [ "$SCRIPT_HASH" = "no" ]; then
+              echo "  - File script locale modificato (Nuovo Hash: $SCRIPT_MATCH)"
+            fi
+          fi
+
+          exit 0
+
+  # 🏗️ JOB 2: Compilazione
+  build:
+    needs: check
+    if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Genero il Timestamp
+        id: timestamp
+        run: |
+          # Imposta il fuso orario di Roma
+          TS=$(TZ='Europe/Rome' date +'%d-%m-%Y-%H%M')
+          echo "ts=$TS" >> $GITHUB_OUTPUT
+
+      - name: Gerero Tag Name
+        id: set_tag
+        run: |
+          # Costruiamo la stringa
+          TAG="${{ env.BUILD_TYPE }}-${{ steps.timestamp.outputs.ts }}-${{ needs.check.outputs.branch }}"
+          # La esportiamo per gli step successivi nello STESSO job
+          echo "FINAL_TAG=$TAG" >> $GITHUB_ENV
+          # (Opzionale) La esportiamo come output se serve ad altri JOB
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      # 🔧 installa dipendenze
+      - name: Installa dipendenze
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential clang flex g++ gawk \
+          gettext git libncurses-dev libssl-dev python3-setuptools rsync \
+          unzip zlib1g-dev file wget curl ccache jq swig
+
+      - name: Checkout Helper Repo (Patch & Files)
+        uses: actions/checkout@v5
+        with:
+          path: "${{ env.BUILDER_REPO }}"
+
+      - name: Cache ccache
+        uses: actions/cache@v5.0.5
+        with:
+          path: |
+              ${{ github.workspace }}/${{ env.BUILD_TYPE }}/dl
+              ${{ github.workspace }}/${{ env.BUILD_TYPE }}/.ccache_${{ env.BUILD_TYPE }}
+          # Usiamo le variabili BUILDER_REPO e CONFIG_FILE per creare il percorso completo
+          key: ccache-${{ needs.check.outputs.branch }}-${{ hashFiles(format('{0}/{1}', env.BUILDER_REPO, env.CONFIG_FILE)) }}
+          restore-keys: |
+            ccache-${{ needs.check.outputs.branch }}-
+
+      - name: Checkout Source ${{ needs.check.outputs.branch }}
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ env.REPO }}
+          # Usa la variabile definita negli env:
+          ref: ${{ needs.check.outputs.branch }}
+          # La cartella di destinazione
+          path: temp_src${{ env.REPO_DIR }}
+          # NON pulire la cartella per preservare la cache (dl, staging_dir, ecc.)
+          clean: false
+          # Scarica solo l'ultimo commit per risparmiare tempo e spazio
+          fetch-depth: 1
+
+      # 2. Sincronizziamo i file verso '${{ env.BUILD_TYPE }}' senza toccare il resto
+      - name: Sync Source to Cache Folder
+        run: |
+
+          TEMP_NAME="temp_src${{ env.REPO_DIR }}"
+          # Verifica che la sorgente esista prima di procedere
+          if [ -d "$TEMP_NAME" ]; then        
+            # Crea la cartella env.REPO_DIR se la cache era vuota
+            mkdir -p ${{ env.REPO_DIR }}
+            
+            # rsync è il modo più sicuro per "fondere" le cartelle:
+            # -a: mantiene i permessi e la struttura (archive)
+            # -v: mostra cosa sta facendo (verbose)
+            # --delete: NON lo usiamo, così non cancelliamo la cache (dl, staging_dir)
+            # --exclude='.git/': ignora la cartella Git dei sorgenti
+            #rsync -aq "$TEMP_NAME/" ${{ env.REPO_DIR }}/
+            rsync -aq --delete --exclude='dl/' --exclude='.ccache_${{ env.BUILD_TYPE }}/' --exclude='staging_dir/' "$TEMP_NAME/" ${{ env.REPO_DIR }}/
+
+            # Eliminiamo la cartella temporanea
+            rm -rf "$TEMP_NAME/"
+          else
+            echo "Errore: $TEMP_NAME non trovata! Checkout fallito?"
+            exit 1
+          fi
+          
+      - name: Update and Install feeds
+        run: |
+          cd ${{ env.REPO_DIR }}
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Apply Config and Versioning
+        run: |
+          cp ${{ env.BUILDER_REPO }}/${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
+          cp ${{ env.BUILDER_REPO }}/.github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
+
+          # inizializza variabile
+          PATCH_STATUS="applied"
+          # Patching dei file personali
+          rm -rf ${{ env.BUILDER_REPO }}/.git ${{ env.BUILDER_REPO }}/.github
+          for file in $(grep -rl "XXXXXX/YYYYYY" ${{ env.BUILDER_REPO }}/ || true); do
+              sed -i "s|XXXXXX/YYYYYY|${{ github.repository }}|g" "$file"
+          done
+
+          # Applicazione Patch AttendedSysupgrade
+          if [ -f ${{ env.BUILDER_REPO }}/attendedsysupgrade-with-GitHub.patch ]; then
+            cd ${{ env.REPO_DIR }}
+            # Proviamo ad applicare la patch
+            if ! patch -p1 < ../${{ env.BUILDER_REPO }}/attendedsysupgrade-with-GitHub.patch; then
+              echo "❌ Errore: Patch fallita (conflitto o già applicata)"
+              PATCH_STATUS="failed"
+            fi
+            cd ..
+          else
+            echo "⚠️ Patch non trovata in ${{ env.BUILDER_REPO }}/, procedo comunque"
+            PATCH_STATUS="missing"
+          fi 
+
+          echo "PATCH_STATUS=$PATCH_STATUS" >> $GITHUB_ENV
+
+          # Spostamento Files
+          [ -d ${{ env.BUILDER_REPO }}/files ] && mv ${{ env.BUILDER_REPO }}/files ${{ env.REPO_DIR }}/
+          chmod 755 ${{ env.REPO_DIR }}/files/usr/bin/upgrade_custom_openwrt 2>/dev/null || true
+          chmod 755 ${{ env.REPO_DIR }}/files/www/cgi-bin/github_* 2>/dev/null || true
+
+          # Forza il NOME del firmware usando BUILD_TYPE
+          cd ${{ env.REPO_DIR }}
+
+          # Rimuove definizioni esistenti per evitare duplicati
+          sed -i '/CONFIG_VERSION_NUMBER/d' .config
+          sed -i '/CONFIG_VERSION_CODE/d' .config
+          sed -i '/CONFIG_VERSION_PRODUCT/d' .config
+          sed -i '/CONFIG_VERSION_REPO/d' .config
+          sed -i '/CONFIG_CCACHE/d' .config
+          sed -i '/CONFIG_CCACHE_DIR/d' .config
+
+          # Usiamo la data SOLO in VERSION_NUMBER per il nome del file
+          echo "CONFIG_VERSION_NUMBER=\"${{ env.BUILD_TYPE }}\"" >> .config
+          
+          # VERSION_CODE lo lasciamo semplice o identico, 
+          # ma OpenWrt spesso lo usa solo internamente.
+          echo "CONFIG_VERSION_CODE=\"${{ steps.timestamp.outputs.ts }}\"" >> .config
+          
+          # Opzionale: puliamo anche il nome prodotto se vuoi un nome file ancora più corto
+          echo 'CONFIG_VERSION_PRODUCT=""' >> .config
+          
+          # Definiamo la sottocartella specifica
+          SUBDIR="${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}"
+          echo "CONFIG_VERSION_REPO=\"https://erpomata.github.io/GL-MT6000/$SUBDIR\"" >> .config
+
+          # --- OTTIMIZZAZIONE CACHE ---
+          # Abilita ccache nel sistema di build
+          echo "CONFIG_CCACHE=y" >> .config
+          # Specifica la cartella (deve coincidere con quella nel path della cache sopra)
+          #echo "CONFIG_CCACHE_DIR=\"$(pwd)/.ccache_${{ env.BUILD_TYPE }}\"" >> .config
+          echo "CONFIG_CCACHE_DIR=\"${{ github.workspace }}/${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}\"" >> .config
+          # ----------------------------
+
+          make defconfig
+
+      - name: Build Firmware
+        run: |
+          cd ${{ env.REPO_DIR }}
+          make -j$(nproc) || make -j1 V=s
+
+     # 📦 prepara file release
+      - name: Prepare release
+        run: |
+          cd ${{ env.REPO_DIR }}
+ 
+          DATE=$(date +%Y-%m-%d)
+          COMMIT=${{ needs.check.outputs.commit }}
+          SHORT=${COMMIT:0:7}
+          SOURCE_DIR=bin
+          
+          # Creiamo le cartelle di destinazione pulite
+          mkdir -p release/firmware
+          mkdir -p release/packages
+          
+          #echo "📂 Contenuto di: "${{ env.REPO_DIR }}
+          #ls -R || true
+          
+
+          # =========================
+          # 🔥 FIRMWARE (solo bin/targets)
+          # =========================
+
+          TARGETS_DIR=$(find "$SOURCE_DIR" -type d -name targets | head -n1)
+         
+          if [ -z "$TARGETS_DIR" ]; then
+            echo "❌ Directory targets non trovata sotto $SOURCE_DIR"
+            find "$SOURCE_DIR" -maxdepth 3 || true
+            exit 1
+          fi
+         
+          echo "📂 Uso TARGETS_DIR=$TARGETS_DIR"
+         
+          #FW_FILES=$(find "$TARGETS_DIR" -type f -name "*sysupgrade.bin")
+          FW_FILES=$(find "$TARGETS_DIR" -type f \( -name "*.bin" -o -name "*.fip" \))
+         
+          if [ -z "$FW_FILES" ]; then
+            echo "❌ Nessun firmware sysupgrade trovato!"
+            find "$TARGETS_DIR" -maxdepth 4 || true
+            exit 1
+          fi
+         
+          echo "✅ Firmware trovato:"
+          echo "$FW_FILES"
+         
+          # Copia firmware
+          echo "$FW_FILES" | while read -r fw; do
+            cp "$fw" release/firmware/
+          done
+         
+          # Copia checksum / manifest (se presenti)
+          find "$TARGETS_DIR" -type f \( -name "*.sha256*" -o -name "*.manifest" \) \
+            -exec cp {} release/firmware/ \; 2>/dev/null || true
+
+          # =========================
+          # 📦 PACKAGES (solo bin/packages)
+          # =========================
+
+          PKG_DIR=$(find "$SOURCE_DIR" -type d -path "*/packages/*" | head -n1)
+          
+          if [ -z "$PKG_DIR" ]; then
+            echo "❌ Directory packages non trovata sotto $SOURCE_DIR"
+            find "$SOURCE_DIR" -maxdepth 3 || true
+            exit 1
+          fi
+          
+          echo "📦 Copio pacchetti da: $PKG_DIR"
+          cp -r "$PKG_DIR"/* release/packages/
+
+          
+          # rigenera index opkg
+          cd release/packages
+          ../../scripts/ipkg-make-index.sh . > Packages
+          gzip -f Packages
+          cd ../..
+          
+          # =========================
+          # 📦 ARCHIVIO
+          # =========================
+          cd release
+          tar -czf packages.tar.gz packages
+          
+          # Esportiamo le variabili per gli step successivi
+          echo "DATE=$DATE" >> $GITHUB_ENV
+          echo "SHORT=$SHORT" >> $GITHUB_ENV
+          echo "✅ Preparazione completata con successo"
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v3.0.0
+        with:
+          tag_name: ${{ env.FINAL_TAG }}
+          name: ${{ env.FINAL_TAG }}
+          body: |
+            ### OpenWrt Build Info
+            - **Branch:** `${{ needs.check.outputs.branch }}`
+            - **Commit SHA:** `${{ needs.check.outputs.commit }}`
+            - **${{ env.CONFIG_FILE }}:** `${{ needs.check.outputs.config_hash }}`
+            - **Date:** "${{ steps.timestamp.outputs.ts }}"
+            - **Type:** ${{ env.BUILD_TYPE }}
+            ---
+            📦 **Sito per i pacchetti:**
+            https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}/
+          files: |
+            ${{ env.REPO_DIR }}/release/firmware/*
+            ${{ env.REPO_DIR }}/release/packages.tar.gz
+            ${{ env.REPO_DIR }}/.config
+            ${{ env.REPO_DIR }}/${{ env.BUILD_TYPE }}.yaml
+          env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy to GitHub Pages
+        run: |
+          # 1. Setup Variabili e Cartelle
+          TS="${{ steps.timestamp.outputs.ts }}"
+          BASE_DIR="public/${{ env.BUILD_TYPE }}"
+          TARGET_PATH="$BASE_DIR/$TS"
+          
+          echo "🚀 Preparazione Deploy per build: $TS"
+          
+          # Creiamo la struttura completa (mkdir -p crea anche le cartelle padre)
+          mkdir -p "$TARGET_PATH"
+
+          # 2. Copia dei file (Firmware e Pacchetti)
+          find ${{ env.REPO_DIR }}/release/packages -type f -exec cp -v {} "$TARGET_PATH/" \;
+          #find ${{ env.REPO_DIR }}/release/firmware -type f -exec cp -v {} "$TARGET_PATH/" \;
+
+          # 3. Gestione Indice APK per il router
+          INDEX_FILE=$(find ${{ env.REPO_DIR }}/bin -path "*/targets/*" -name "packages.adb" | head -n 1)
+          
+          if [ -f "$INDEX_FILE" ]; then
+            echo "✅ Indice trovato, lo converto per il router"
+            cp "$INDEX_FILE" "$TARGET_PATH/APKINDEX.tar.gz"
+            cp "$INDEX_FILE" "$TARGET_PATH/packages.adb"
+          else
+            echo "❌ ERRORE: packages.adb non trovato!"
+            exit 1
+          fi
+
+      - name: Publish Pages
+        uses: peaceiris/actions-gh-pages@v4.0.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          keep_files: true
+
+      # 📧 invio email in caso di successo
+      - name: Send email
+        if: success()
+        uses: dawidd6/action-send-mail@v16
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USER }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: OpenWrt ${{ env.BUILD_TYPE }} Build SUCCESS
+          body: |
+            ✅ Build completata
+
+            📂 **Repository Pacchetti (Sito):**
+            https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}/
+
+            📦 **GitHub Release (Firmware e Log):**
+            https://github.com/${{ github.repository }}/releases/tag/${{ env.FINAL_TAG }}
+
+            Build ID: ${{ steps.timestamp.outputs.ts }}
+            Commit: ${{ needs.check.outputs.commit }}
+
+            🔗 Release:
+            ${{ github.server_url }}/${{ github.repository }}/releases
+
+            🔗 Run:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            Path package:
+            https://erpomata.github.io/GL-MT6000/${{ env.REPO_DIR }}/
+
+            ⚠️ Patch status: ${{ env.PATCH_STATUS }}
+          to: ${{ secrets.MAIL_USER }}
+          from: OpenWrt CI <${{ secrets.MAIL_USER }}>
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3.23
+        if: failure()
