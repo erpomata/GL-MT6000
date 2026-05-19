@@ -138,6 +138,15 @@ jobs:
             BASE_DIR="${{ matrix.build_type }}"
 
             for tag in $RELEASES_TO_DELETE; do
+            
+              BODY=$(gh release view "$tag" --json body --jq '.body' 2>/dev/null || true)
+              
+              if echo "$BODY" | grep -q "KEEP"; then
+                  echo "🛑 Release $tag marcata come KEEP — skip eliminazione"
+                  continue
+              fi
+
+            
               echo "🗑️ Eliminazione release e tag: $tag"
 
               # =========================================================
