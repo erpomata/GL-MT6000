@@ -39,7 +39,7 @@ jobs:
           # 1. Chiediamo un limite alto (es. 50) per scansionare lo storico recente
           echo "🔍 Analisi delle ultime run per identificare i controlli a vuoto..."
           RUNS=$(gh run list --workflow "${{ matrix.build_type }}.yaml" --limit 50 --json databaseId,conclusion \
-            | jq -r '.[] | select(.conclusion=="success" or .conclusion=="cancelled") | .databaseId')
+            | jq -r '.[] | select(.conclusion=="success" or .conclusion=="cancelled") | .databaseId' 2>/dev/null || true)
 
           # Inizializziamo un contatore per contare quante build REALI (andate a buon fine) vogliamo tenere
           BUILD_REALI_TENUTE=0
@@ -80,7 +80,7 @@ jobs:
               # =========================================================
               # 1. Recupera la lista delle run rebuild-index.yaml
               # =========================================================
-              RUNS_INDEX=$(gh run list --workflow rebuild-index.yaml --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY")
+              RUNS_INDEX=$(gh run list --workflow rebuild-index.yaml --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY" 2>/dev/null || true)
 
               if [ -n "$RUNS_INDEX" ]; then
                 COUNT_INDEX=$(echo "$RUNS_INDEX" | wc -l | xargs)
@@ -94,7 +94,7 @@ jobs:
               # =========================================================
               # 2. Recupera la lista delle run cleanup.yaml (Questo workflow)
               # =========================================================
-              RUNS_CLEANUP=$(gh run list --workflow cleanup.yaml --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY")
+              RUNS_CLEANUP=$(gh run list --workflow cleanup.yaml --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY" 2>/dev/null || true)
 
               if [ -n "$RUNS_CLEANUP" ]; then
                 # Rimuoviamo l'ID della run corrente ($GITHUB_RUN_ID) dalla lista usando grep -v
@@ -116,7 +116,7 @@ jobs:
               # =========================================================
               # 3. Recupera la lista delle run pages-build-deployment
               # =========================================================
-              RUNS_CLEANUP=$(gh run list --workflow pages-build-deployment --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY")
+              RUNS_CLEANUP=$(gh run list --workflow pages-build-deployment --limit 100 --json databaseId --jq '.[].databaseId' --repo "$GITHUB_REPOSITORY" 2>/dev/null || true)
 
               if [ -n "$RUNS_CLEANUP" ]; then
                   COUNT_CLEAN_FILT=$(echo "$RUNS_CLEANUP" | wc -l | xargs)
