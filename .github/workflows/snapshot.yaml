@@ -141,7 +141,7 @@ jobs:
           # (Opzionale) La esportiamo come output se serve ad altri JOB
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-- name: Compute paths
+      - name: Compute paths
         id: compute_paths
         run: |
           TS="${{ steps.timestamp.outputs.ts }}"
