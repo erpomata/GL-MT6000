@@ -73,6 +73,18 @@ jobs:
           else
             echo "✅ Nessuna run trovata nel raggio d'azione."
           fi
+          
+          
+          
+          # Cancella tutto ciò che NON è success
+          gh run list --workflow "${{ matrix.build_type }}.yaml" --limit 50 \
+            --json databaseId,conclusion \
+            | jq -r '.[] | select(.conclusion!="success" and .conclusion!="") | .databaseId' \
+            | while read run; do
+                echo "🗑️ Cancello non-success $run"
+                gh run delete $run
+              done
+
 
           #Lo faccio solo per snapshot altrimenti lo fanno iparallelo due processi e si richiano casini
           if [ "${{ matrix.build_type }}" == "snapshot" ]; then
