@@ -66,7 +66,7 @@ jobs:
               # Se il job 'build' è 'skipped' (controllo a vuoto) OPPURE se è una build reale success
               # ma abbiamo già superato il numero massimo di release da tenere, allora si cancella.
               if [ "$BUILD_CONCLUSION" = "skipped" ] || [ -z "$BUILD_CONCLUSION" ] || [ "$BUILD_REALI_TENUTE" -gt "$LIMITE_TENUTE" ]; then
-                echo "🗑️ Eliminazione run ID: $run_id (Stato build: ${BUILD_CONCLUSION:-annullata / vecchia})"
+                echo "🗑️ Eliminazione run ID: $run_id"
                gh run delete "$run_id" || true
               fi
             done
