@@ -451,6 +451,7 @@ jobs:
             - **${{ env.BUILD_TYPE }}.yaml:** `${{ needs.check.outputs.script_hash }}`
             - **Date:** "${{ steps.timestamp.outputs.ts }}"
             - **Type:** ${{ env.BUILD_TYPE }}
+            - **Job ID:** ${{ github.run_id }}
             ---
             📦 **Sito per i pacchetti:**
             ${{ env.FINAL_URL }}/

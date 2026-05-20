@@ -124,6 +124,40 @@ jobs:
           # (Opzionale) La esportiamo come output se serve ad altri JOB
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
+      - name: Compute paths
+        id: compute_paths
+        run: |
+          TS="${{ steps.timestamp.outputs.ts }}"
+          DATE=$(TZ='Europe/Rome' date +%Y-%m-%d)
+
+          # 1. Estrarre la versione dal tag (es. next-r4.8.2.rss.mtk)
+          VERSION_PART=$(echo "${{ env.FINAL_TAG }}" | sed "s/${{ env.BUILD_TYPE }}-$TS-//")
+
+          # 2. Comporre il nome della cartella del firmware
+          FIRMWARE_DIR_NAME="${DATE}_${TS}_${VERSION_PART}"
+
+          # 🎯 3. BASE_URL: Quello da dare a OpenWrt (si ferma al timestamp)
+          BASE_URL="https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/${TS}"
+
+          # 🎯 4. FINAL_URL: Il percorso chilometrico reale e completo
+          FINAL_URL="${BASE_URL}/${FIRMWARE_DIR_NAME}/targets/mediatek/filogic/packages"
+
+          echo "🚀 Percorsi calcolati:"
+          echo "   🔗 Base URL:  $BASE_URL"
+          echo "   🔗 Final URL: $FINAL_URL"
+
+          # Export globale (Variabili d'ambiente per gli step successivi)
+          echo "DATE=$DATE" >> $GITHUB_ENV
+          echo "VERSION_PART=$VERSION_PART" >> $GITHUB_ENV
+          echo "FIRMWARE_DIR_NAME=$FIRMWARE_DIR_NAME" >> $GITHUB_ENV
+          echo "BASE_URL=$BASE_URL" >> $GITHUB_ENV
+          echo "FINAL_URL=$FINAL_URL" >> $GITHUB_ENV
+
+          # Output formali del job (opzionali, utili se richiami lo step tra job diversi)
+          echo "firmware_dir=$FIRMWARE_DIR_NAME" >> $GITHUB_OUTPUT
+          echo "base_url=$BASE_URL" >> $GITHUB_OUTPUT
+          echo "final_url=$FINAL_URL" >> $GITHUB_OUTPUT
+
       # 🔧 installa dipendenze
       - name: Installa dipendenze
         run: |
@@ -194,7 +228,7 @@ jobs:
       - name: Apply Config and Versioning
         run: |
           TS="${{ steps.timestamp.outputs.ts }}"
-          FINAL_URL="https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/$TS"
+          FINAL_URL="${{ env.FINAL_URL }}"
           cp ${{ env.BUILDER_REPO }}/${{ env.CONFIG_FILE }} ${{ env.REPO_DIR }}/.config
           cp ${{ env.BUILDER_REPO }}/.github/workflows/${{env.BUILD_TYPE}}.yaml ${{ env.REPO_DIR }}/
 
@@ -249,7 +283,7 @@ jobs:
           echo 'CONFIG_VERSION_PRODUCT=""' >> .config
           
           # Definiamo la sottocartella specifica
-          echo "CONFIG_VERSION_REPO=\"$FINAL_URL\"" >> .config
+          echo "CONFIG_VERSION_REPO=\"${{ env.BASE_URL }}\"" >> .config
 
           # 3. IL FIX: Forziamo la creazione di un file distfeeds.conf personalizzato
           # Questo sovrascrive il comportamento di default che aggiunge i path infiniti
@@ -400,9 +434,10 @@ jobs:
             - **${{ env.BUILD_TYPE }}.yaml:** `${{ needs.check.outputs.script_hash }}`
             - **Date:** "${{ steps.timestamp.outputs.ts }}"
             - **Type:** ${{ env.BUILD_TYPE }}
+            - **Job ID:** ${{ github.run_id }}
             ---
             📦 **Sito per i pacchetti:**
-            https://erpomata.github.io/GL-MT6000/${{ env.BUILD_TYPE }}/${{ steps.timestamp.outputs.ts }}/
+            ${{ env.FINAL_URL }}/
           files: |
             ${{ env.REPO_DIR }}/release/firmware/*
             ${{ env.REPO_DIR }}/release/packages.tar.gz
@@ -423,14 +458,9 @@ jobs:
           # FINAL_TAG è ad esempio: snapshot-17-05-2026-1635-next-r4.8.2.rss.mtk
           # Dobbiamo trasformarlo in: 2026-05-17_17-05-2026-1635_next-r4.8.2.rss.mtk
           
-          # Estraiamo la parte della versione (tutto ciò che viene dopo il timestamp) -> next-r4.8.2.rss.mtk
-          VERSION_PART=$(echo "${{ env.FINAL_TAG }}" | sed "s/${{ env.BUILD_TYPE }}-$TS-//")
-          
-          # Componiamo il nome esatto della cartella usando le variabili d'ambiente già disponibili
-          FIRMWARE_DIR_NAME="${{ env.DATE }}_${TS}_${VERSION_PART}"
           
           # Costruiamo il percorso chilometrico finale dentro la cartella public/
-          TARGET_PATH="$BASE_DIR/$TS/$FIRMWARE_DIR_NAME/targets/mediatek/filogic/packages"
+          TARGET_PATH="$BASE_DIR/$TS/${{ env.FIRMWARE_DIR_NAME }}/targets/mediatek/filogic/packages"
           
           echo "📁 Il percorso di destinazione calcolato è: $TARGET_PATH"
           mkdir -p "$TARGET_PATH"
