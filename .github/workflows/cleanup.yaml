@@ -19,12 +19,6 @@ jobs:
       fail-fast: false
 
     steps:
-      - name: Checkout gh-pages
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          fetch-depth: 1
-
       - name: Cleanup
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -70,8 +64,9 @@ jobs:
             # parse TIMESTAMP
             # ============================
             TS=$(echo "$BODY" | sed -n 's/.*Date:\*\* "\(.*\)".*/\1/p')
-
             TARGET="$TYPE/$TS"
+            TARGETS+=("$TARGET")
+
 
             if [ -d "$TARGET" ]; then
               echo "🧹 Cancello cartella $TARGET"
@@ -85,6 +80,18 @@ jobs:
             # ============================
             gh release delete "$tag" --yes --cleanup-tag || true
           done
+
+
+           # 👉 serializzazione array
+          if [ ${#TARGETS[@]} -eq 0 ]; then
+            echo "targets=" >> $GITHUB_OUTPUT
+            echo "✨ Nessuna cartella da cancellare"
+          else
+            printf "%s\n" "${TARGETS[@]}" > targets.txt
+            echo "targets_file=targets.txt" >> $GITHUB_OUTPUT
+            echo "✅ Targets trovati:"
+            cat targets.txt
+          fi
 
           # =========================================================
           # 2. CLEANUP RUNS (mantieni solo 10 success)
@@ -132,7 +139,28 @@ jobs:
             done
           fi
 
+
+      - name: Checkout gh-pages
+        if: steps.cleanup.outputs.targets_file != ''
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+
+      - name: Delete folders
+        if: steps.cleanup.outputs.targets_file != ''
+        run: |
+          while read TARGET; do
+            if [ -d "$TARGET" ]; then
+              echo "🧹 Cancello $TARGET"
+              rm -rf "$TARGET"
+            else
+              echo "⚠️ Non trovato $TARGET"
+            fi
+          done < "${{ steps.cleanup.outputs.targets_file }}"
+
       - name: Commit & Push
+        if: steps.cleanup.outputs.targets_file != ''
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
