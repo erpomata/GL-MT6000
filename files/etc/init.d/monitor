@@ -60,6 +60,7 @@ start_service() {
 }
 
 stop_service() {
-    echo "Arresto del servizio monitor"
+    [ -x /root/ventola ] && /root/ventola on
+    echo "Arresto del servizio monitor - VENTOLA: ACCESA PER SICUREZZA"
     # procd gestisce lo stop automaticamente
 }
