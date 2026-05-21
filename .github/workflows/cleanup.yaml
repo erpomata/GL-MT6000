@@ -68,14 +68,6 @@ jobs:
             TARGET="$TYPE/$TS"
             TARGETS+=("$TARGET")
 
-
-            if [ -d "$TARGET" ]; then
-              echo "🧹 Cancello cartella $TARGET"
-              rm -rf "$TARGET"
-            else
-              echo "⚠️ Cartella non trovata $TARGET"
-            fi
-
             # ============================
             # delete release
             # ============================
