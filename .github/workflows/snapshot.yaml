@@ -124,6 +124,23 @@ jobs:
     if: needs.check.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     steps:
+
+      - name: Maximize disk space
+        run: |
+          echo "Before cleanup:"
+          df -h
+      
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/node_modules
+          docker system prune -af || true
+      
+          echo "After cleanup:"
+          df -h
+    
       - name: Genero il Timestamp
         id: timestamp
         run: |
