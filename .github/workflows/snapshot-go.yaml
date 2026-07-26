@@ -1,4 +1,4 @@
-name: OpenWrt MT6000 SNAPSHOT
+name: OpenWrt MT6000 SNAPSHOT GO
 
 permissions:
   contents: write
