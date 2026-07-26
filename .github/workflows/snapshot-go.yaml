@@ -5,5 +5,10 @@ permissions:
   actions: write
 
 on:
-  workflow_dispatch: null
+  workflow_dispatch:
 
+jobs:
+  placeholder:
+    runs-on: ubuntu-22.04
+    steps:
+      - run: echo "Questo è solo un segnaposto per abilitare il menu."
