@@ -1,1 +1,9 @@
+name: OpenWrt MT6000 SNAPSHOT GO
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_dispatch: null
 
