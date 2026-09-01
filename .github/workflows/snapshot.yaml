@@ -364,12 +364,12 @@ jobs:
 
           make defconfig
 
-      - name: Pre-build host python setuptools
+      - name: Patch setuptools dependency constraints
         run: |
           cd ${{ env.REPO_DIR }}
-          # Compila ed installa prima la versione aggiornata di python3-setuptools per l'host
-          make package/devel/python3-setuptools/host/compile -j$(nproc) || make package/devel/python3-setuptools/host/compile V=s
-          make package/lang/python/python3/host/compile -j$(nproc) || true
+          # Trova tutti i pyproject.toml e sblocca la versione di setuptools
+          find . -name "pyproject.toml" -exec sed -i 's/setuptools<[0-9.]*,>=[0-9.]*/setuptools/g' {} + 2>/dev/null || true
+          find . -name "pyproject.toml" -exec sed -i 's/setuptools<[0-9.]*/setuptools/g' {} + 2>/dev/null || true
           
       - name: Build Firmware
         run: |
