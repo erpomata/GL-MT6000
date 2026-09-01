@@ -364,11 +364,12 @@ jobs:
 
           make defconfig
 
-      - name: Fix Python Host Dependencies (Setuptools)
+      - name: Pre-build host python setuptools
         run: |
           cd ${{ env.REPO_DIR }}
-          # Installa/aggiorna setuptools nell'ambiente hostpkg usato da OpenWrt
-          ./staging_dir/hostpkg/bin/python3 -m pip install --upgrade "setuptools>=68,<83.1" || true
+          # Compila ed installa prima la versione aggiornata di python3-setuptools per l'host
+          make package/devel/python3-setuptools/host/compile -j$(nproc) || make package/devel/python3-setuptools/host/compile V=s
+          make package/lang/python/python3/host/compile -j$(nproc) || true
           
       - name: Build Firmware
         run: |
