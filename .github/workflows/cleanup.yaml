@@ -5,169 +5,268 @@ on:
   schedule:
     - cron: "0 23 * * *"
 
+concurrency:
+  group: maintenance
+  cancel-in-progress: false
+
 jobs:
-  maintenance:
-    name: Cleanup ${{ matrix.build_type }}
+  # ✅ STEP 1: Clean GitHub Releases
+  cleanup-releases:
+    name: Cleanup Releases - ${{ matrix.build_type }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: write
-
     strategy:
       matrix:
         build_type: [snapshot, main]
       fail-fast: false
-
     steps:
-      - name: Cleanup Releases & Workflows
-        id: cleanup
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Delete old releases keeping last 10
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          NUM_KEEP: 10
         run: |
           set -e
-
           TYPE="${{ matrix.build_type }}"
-          echo "🧹 Cleanup per $TYPE"
+          NUM_KEEP=10
 
-          # =========================================================
-          # 1. CLEANUP RELEASE (fonte di verità)
-          # =========================================================
+          echo "🗑️ Cleanup releases for: $TYPE"
+
+          # Get all releases for this type, sorted newest first
           RELEASES=$(gh release list --limit 100 \
             | grep "^$TYPE-" \
             | awk '{print $1}')
 
-          KEEP_RELEASES=$(echo "$RELEASES" | head -n $NUM_KEEP)
+          RELEASE_COUNT=$(echo "$RELEASES" | wc -l)
+          echo "📊 Found $RELEASE_COUNT releases of type $TYPE"
+
+          if [ "$RELEASE_COUNT" -le "$NUM_KEEP" ]; then
+            echo "✅ Keeping all $RELEASE_COUNT releases (< $NUM_KEEP)"
+            exit 0
+          fi
+
+          # Keep first N, delete the rest
           DELETE_RELEASES=$(echo "$RELEASES" | tail -n +$((NUM_KEEP+1)))
 
           for tag in $DELETE_RELEASES; do
             BODY=$(gh release view "$tag" --json body --jq '.body' 2>/dev/null || true)
 
-            # skip KEEP
+            # Check for KEEP flag
             if echo "$BODY" | grep -q "KEEP"; then
-              echo "🛑 $tag ha flag KEEP"
+              echo "🛑 Preserving $tag (has KEEP flag)"
               continue
             fi
 
-            echo "🗑️ Processing $tag"
-
-            # parse RUN ID
-            RUN_ID=$(echo "$BODY" | sed -n 's/.*Job ID:\*\* \([0-9]\+\).*/\1/p')
-
-            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "$GITHUB_RUN_ID" ]; then
-              echo "🔥 Cancello run $RUN_ID"
-              gh run delete "$RUN_ID" || true
-            fi
-
-            # delete release
+            echo "🔥 Deleting release: $tag"
             gh release delete "$tag" --yes --cleanup-tag || true
           done
 
-          # =========================================================
-          # 2. CLEANUP RUNS (mantieni solo 10 success)
-          # =========================================================
-          echo "🔍 Cleanup runs $TYPE.yaml"
+          echo "✅ Release cleanup complete"
 
-          RUN_DATA=$(gh run list --workflow "$TYPE.yaml" --limit 50 \
+  # ✅ STEP 2: Clean Workflow Runs
+  cleanup-runs:
+    name: Cleanup Workflow Runs - ${{ matrix.build_type }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    strategy:
+      matrix:
+        build_type: [snapshot, main]
+      fail-fast: false
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Keep only last 10 successful runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TYPE="${{ matrix.build_type }}"
+          NUM_KEEP=10
+
+          echo "🔍 Cleanup runs for: $TYPE.yaml"
+
+          # Get run data: ID and status
+          RUN_DATA=$(gh run list \
+            --workflow "$TYPE.yaml" \
+            --limit 100 \
             --json databaseId,conclusion \
-            | jq -r '.[] | "\(.databaseId) \(.conclusion)"')
+            --jq '.[] | "\(.databaseId) \(.conclusion)"')
 
+          # Extract only successful runs
           SUCCESS_RUNS=$(echo "$RUN_DATA" | grep " success$" | awk '{print $1}')
-          KEEP_RUNS=$(echo "$SUCCESS_RUNS" | head -n 10)
+          SUCCESS_COUNT=$(echo "$SUCCESS_RUNS" | grep -c . || true)
 
-          ALL_IDS=$(echo "$RUN_DATA" | awk '{print $1}')
+          echo "📊 Found $SUCCESS_COUNT successful runs"
 
-          DELETE_RUNS=$(comm -23 \
-            <(echo "$ALL_IDS" | sort) \
-            <(echo "$KEEP_RUNS" | sort)
-          )
+          if [ "$SUCCESS_COUNT" -le "$NUM_KEEP" ]; then
+            echo "✅ Keeping all $SUCCESS_COUNT runs (< $NUM_KEEP)"
+            exit 0
+          fi
+
+          # Keep first N, mark rest for deletion
+          KEEP_RUNS=$(echo "$SUCCESS_RUNS" | head -n $NUM_KEEP)
+          DELETE_RUNS=$(echo "$SUCCESS_RUNS" | tail -n +$((NUM_KEEP+1)))
 
           for run in $DELETE_RUNS; do
             if [ "$run" != "$GITHUB_RUN_ID" ]; then
-              echo "🗑️ Cancello run $run"
+              echo "🗑️ Deleting run: $run"
               gh run delete "$run" || true
             fi
           done
 
-          # =========================================================
-          # 3. SNAPSHOT HARD CLEAN (workflows tecnici)
-          # =========================================================
-          if [ "$TYPE" = "snapshot" ]; then
-            echo "💣 Cleanup totale workflows tecnici"
+          echo "✅ Run cleanup complete"
 
-            for wf in "pages-build-deployment" "cleanup.yaml" "rebuild-index.yaml"; do
-              RUNS=$(gh run list --workflow "$wf" --limit 100 \
-                --json databaseId \
-                --jq '.[].databaseId' 2>/dev/null || true)
+  # ✅ STEP 3: Deep cleanup for snapshot (remove tech workflows)
+  cleanup-snapshot-deep:
+    name: Deep Cleanup - Technical Workflows
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-              for r in $RUNS; do
-                if [ "$r" != "$GITHUB_RUN_ID" ]; then
-                  echo "🔥 Cancello $wf run $r"
-                  gh run delete "$r" || true
-                fi
-              done
+      - name: Remove orphaned workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          echo "💣 Deep cleanup of technical workflows"
+
+          # List of workflows to aggressively clean
+          WORKFLOWS=("pages-build-deployment" "cleanup.yaml" "rebuild-index.yaml")
+
+          for wf in "${WORKFLOWS[@]}"; do
+            echo "🔥 Cleaning up: $wf"
+            
+            RUNS=$(gh run list \
+              --workflow "$wf" \
+              --limit 100 \
+              --json databaseId \
+              --jq '.[].databaseId' 2>/dev/null || true)
+
+            RUN_COUNT=$(echo "$RUNS" | grep -c . || true)
+            echo "   Found $RUN_COUNT runs"
+
+            for r in $RUNS; do
+              if [ "$r" != "$GITHUB_RUN_ID" ]; then
+                echo "   Deleting run: $r"
+                gh run delete "$r" || true
+              fi
             done
-          fi
+          done
 
-      # =========================================================
-      # 4. PULIZIA EFFETTIVA DELLA CARTELLA SU GH-PAGES
-      # =========================================================
+          echo "✅ Technical workflow cleanup complete"
+
+  # ✅ STEP 4: Sync gh-pages with active releases
+  sync-gh-pages:
+    name: Sync gh-pages with Releases
+    needs: [cleanup-releases, cleanup-runs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        build_type: [snapshot, main]
+      fail-fast: false
+    steps:
       - name: Checkout gh-pages
         uses: actions/checkout@v4
         with:
           ref: gh-pages
           fetch-depth: 0
 
-      - name: Synchronize gh-pages folder with Releases
+      - name: Remove orphaned directories
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
           TYPE="${{ matrix.build_type }}"
           
           if [ ! -d "$TYPE" ]; then
-            echo "Directory $TYPE non trovata su gh-pages."
+            echo "⚠️ Directory $TYPE not found on gh-pages"
             exit 0
           fi
 
-          # 1. Recupera la lista dei tag delle release ancora esistenti
-          EXISTING_TAGS=$(gh release list --limit 100 | grep "^$TYPE-" | awk '{print $1}')
-          
-          # 2. Raccogli i timestamp/folder autorizzati dalle release attive
-          VALID_TARGETS=""
-          for tag in $EXISTING_TAGS; do
+          echo "🧹 Syncing $TYPE with active releases..."
+
+          # Get all active release tags
+          ACTIVE_TAGS=$(gh release list --limit 100 \
+            | grep "^$TYPE-" \
+            | awk '{print $1}')
+
+          # Extract valid folder names from release bodies
+          VALID_FOLDERS=""
+          for tag in $ACTIVE_TAGS; do
             BODY=$(gh release view "$tag" --json body --jq '.body' 2>/dev/null || true)
-            TS=$(echo "$BODY" | sed -n 's/.*Date:\*\* "\(.*\)".*/\1/p')
-            if [ -n "$TS" ]; then
-              VALID_TARGETS="$VALID_TARGETS $TS"
+            
+            # Extract timestamp/folder name from release body
+            FOLDER=$(echo "$BODY" | sed -n 's/.*Folder:\*\* \([^ ]*\).*/\1/p')
+            
+            if [ -n "$FOLDER" ]; then
+              VALID_FOLDERS="$VALID_FOLDERS $FOLDER"
             fi
           done
 
-          # 3. Elimina fisicamente dalla cartella snapshot/ ogni sotto-elemento non associato a una release valida
-          echo "🧹 Verifico e pulisco $TYPE/..."
+          echo "📊 Valid folders: $VALID_FOLDERS"
+
+          # Clean up orphaned directories
           cd "$TYPE"
           
-          for item in *; do
+          for item in */; do
             [ -e "$item" ] || continue
+            item_name="${item%/}"  # Remove trailing slash
             
-            if ! echo "$VALID_TARGETS" | grep -q -w "$item"; then
-              echo "🗑️ Rimuovo elemento orfano: $item"
+            if ! echo "$VALID_FOLDERS" | grep -q "$item_name"; then
+              echo "🗑️ Removing orphaned: $item_name"
               rm -rf "$item"
             else
-              echo "✅ Mantenuto: $item"
+              echo "✅ Keeping: $item_name"
             fi
           done
+          
+          cd - > /dev/null
+          echo "✅ Sync complete for $TYPE"
 
-      - name: Commit & Push Changes
+  # ✅ STEP 5: Commit all changes
+  commit-cleanup:
+    name: Commit Changes
+    needs: sync-gh-pages
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+
+      - name: Commit and push cleanup results
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
           git add .
+          
           if ! git diff --cached --quiet; then
-            echo "🚀 Salvo le modifiche su gh-pages..."
-            git commit -m "🧹 Cleanup automatico $TYPE basato sulle release attive"
+            git commit -m "🧹 Cleanup: Remove orphaned builds"
             git push origin gh-pages
+            echo "🚀 Changes committed and pushed"
           else
-            echo "✨ La directory $TYPE è già completamente pulita."
+            echo "✨ No cleanup changes needed"
           fi
