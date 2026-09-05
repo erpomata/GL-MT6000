@@ -6,94 +6,166 @@ on:
       - gh-pages
   workflow_dispatch:
 
-jobs:
-  reindex:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+concurrency:
+  group: rebuild-index
+  cancel-in-progress: false
 
+jobs:
+  # ✅ STEP 1: Detect if rebuild is needed (anti-loop)
+  should-rebuild:
+    name: Check if rebuild needed
+    runs-on: ubuntu-latest
+    outputs:
+      should_rebuild: ${{ steps.check.outputs.should_rebuild }}
     steps:
       - name: Checkout gh-pages
         uses: actions/checkout@v4
         with:
           ref: gh-pages
+          fetch-depth: 1
 
-      # ✅ BLOCCO ANTI-LOOP
-      - name: Skip self-trigger
+      - id: check
+        name: Detect auto-generated commits
         run: |
           AUTHOR=$(git log -1 --pretty=%an)
           MESSAGE=$(git log -1 --pretty=%s)
 
-          echo "Author: $AUTHOR"
-          echo "Message: $MESSAGE"
+          echo "Last commit:"
+          echo "  Author: $AUTHOR"
+          echo "  Message: $MESSAGE"
 
+          # Skip if this is our own auto-generated commit
           if [ "$AUTHOR" = "github-actions[bot]" ] && echo "$MESSAGE" | grep -q "Update Pages Index"; then
-            echo "⏭️ Skip: commit generato dal workflow"
-            exit 0
+            echo "should_rebuild=false" >> $GITHUB_OUTPUT
+            echo "⏭️ Skipping: auto-generated commit detected"
+          else
+            echo "should_rebuild=true" >> $GITHUB_OUTPUT
+            echo "✅ Rebuild needed"
           fi
 
-      - name: Generate HTML Indices
+  # ✅ STEP 2: Generate HTML indices
+  generate-indices:
+    name: Generate HTML Indices
+    needs: should-rebuild
+    if: needs.should-rebuild.outputs.should_rebuild == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+
+      - name: Generate main and snapshot indices
         run: |
           generate_for() {
             local TYPE=$1
             
-            [ ! -d "$TYPE" ] && return
+            [ ! -d "$TYPE" ] && echo "⚠️ Directory $TYPE not found" && return 0
             
-            echo "📊 Indicizzazione: $TYPE"
+            echo "📊 Generating index for: $TYPE"
             
             MAIN_INDEX="$TYPE/index.html"
-            echo "<html><head><title>Build History - $TYPE</title></head><body style='font-family:sans-serif; padding:20px;'>" > "$MAIN_INDEX"
-            echo "<h1>Cronologia Build $TYPE</h1><hr><ul>" >> "$MAIN_INDEX"
+            
+            # Create main index with better HTML/CSS
+            cat > "$MAIN_INDEX" << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Build History</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; background: #f6f8fa; }
+              h1 { color: #0366d6; border-bottom: 2px solid #e1e4e8; padding-bottom: 10px; }
+              ul { list-style: none; padding: 0; }
+              li { padding: 10px; margin: 5px 0; background: white; border-radius: 6px; }
+              a { color: #0366d6; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              hr { border: none; border-top: 1px solid #e1e4e8; margin: 20px 0; }
+              footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; }
+            </style>
+          </head>
+          <body>
+          EOF
+            
+            echo "<h1>📚 Build History - $TYPE</h1><hr>" >> "$MAIN_INDEX"
+            echo "<ul>" >> "$MAIN_INDEX"
 
-            find "$TYPE" -type d ! -path "$TYPE" | while IFS= read -r dirpath; do
-              
+            # Find all leaf directories and add to index
+            find "$TYPE" -mindepth 1 -type d ! -path "$TYPE" -print0 | sort -z | while read -d $'\0' dirpath; do
               relpath="${dirpath#$TYPE/}"
               SPEC_INDEX="$dirpath/index.html"
 
-              # ✅ Se NON è leaf → cancella eventuale index
-              if [ -n "$(find "$dirpath" -mindepth 1 -type d -print -quit)" ]; then
-                rm -f "$SPEC_INDEX"
-                continue
-              fi
+              # Check if it's a leaf (no subdirectories)
+              if [ -z "$(find "$dirpath" -mindepth 1 -type d)" ]; then
+                echo "<li><a href=\"$relpath/\">📁 $relpath/</a></li>" >> "$MAIN_INDEX"
 
-              # ✅ Leaf → aggiungi al main index
-              echo "<li><a href=\"$relpath/\">$relpath/</a></li>" >> "$MAIN_INDEX"
-
-              # ✅ Rigenera index
-              rm -f "$SPEC_INDEX"
-
-              {
-                echo "<html><head><title>Build $relpath</title></head><body style='font-family:sans-serif; padding:20px;'>"
-                echo "<h2>Files in $relpath</h2>"
-                echo "<p><a href='../'>.. Torna su</a></p><hr><ul>"
+                # Generate specific index for this leaf
+                cat > "$SPEC_INDEX" << 'LEAF_EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Build Files</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; background: #f6f8fa; }
+              h2 { color: #0366d6; }
+              ul { list-style: none; padding: 0; }
+              li { padding: 10px; margin: 5px 0; background: white; border-radius: 6px; }
+              a { color: #0366d6; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              .back { margin-bottom: 20px; }
+              hr { border: none; border-top: 1px solid #e1e4e8; margin: 20px 0; }
+              footer { margin-top: 40px; color: #666; font-size: 12px; }
+            </style>
+          </head>
+          <body>
+          LEAF_EOF
+                
+                echo "<div class='back'><a href='../'>← Back to index</a></div>" >> "$SPEC_INDEX"
+                echo "<h2>📄 Files in $relpath</h2><hr><ul>" >> "$SPEC_INDEX"
 
                 for file in "$dirpath"/*; do
+                  [ -f "$file" ] || continue
                   fname=$(basename "$file")
                   [ "$fname" = "index.html" ] && continue
-                  echo "<li><a href=\"$fname\">$fname</a></li>"
+                  size=$(du -h "$file" | cut -f1)
+                  echo "<li><a href=\"$fname\">📥 $fname</a> <small>($size)</small></li>" >> "$SPEC_INDEX"
                 done
 
-                echo "</ul></body></html>"
-              } > "$SPEC_INDEX"
-
+                echo "</ul>" >> "$SPEC_INDEX"
+                echo "<footer><p>Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')</p></footer>" >> "$SPEC_INDEX"
+                echo "</body></html>" >> "$SPEC_INDEX"
+              else
+                # Non-leaf directory - remove any existing index
+                rm -f "$SPEC_INDEX"
+              fi
             done
 
-            echo "</ul><p><a href='../'>🏠 Torna alla Home</a></p></body></html>" >> "$MAIN_INDEX"
+            echo "</ul>" >> "$MAIN_INDEX"
+            echo "<footer><p>Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')</p></footer>" >> "$MAIN_INDEX"
+            echo "</body></html>" >> "$MAIN_INDEX"
           }
 
           generate_for "main"
           generate_for "snapshot"
+          
+          echo "✅ Index generation complete"
 
-      - name: Commit and Push if changed
+      - name: Commit and push changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
           git add .
 
-          if ! git diff --quiet --cached; then
+          if ! git diff --cached --quiet; then
             git commit -m "🌎 Update Pages Index (Auto-generated)"
             git push origin gh-pages
+            echo "✅ Changes pushed"
           else
-            echo "✅ Nessun cambiamento"
+            echo "✨ No changes needed"
           fi
