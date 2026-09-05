@@ -133,6 +133,141 @@ jobs:
           fi
 
 
+name: Maintenance & Cleanup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 23 * * *"
+
+jobs:
+  maintenance:
+    name: Cleanup ${{ matrix.build_type }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    strategy:
+      matrix:
+        build_type: [snapshot, main]
+      fail-fast: false
+
+    steps:
+      - name: Cleanup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          NUM_KEEP: 10
+        run: |
+          set -e
+
+          TYPE="${{ matrix.build_type }}"
+          echo "🧹 Cleanup per $TYPE"
+
+          # =========================================================
+          # 1. CLEANUP RELEASE (fonte di verità)
+          # =========================================================
+          RELEASES=$(gh release list --limit 100 \
+            | grep "^$TYPE-" \
+            | awk '{print $1}')
+
+          KEEP_RELEASES=$(echo "$RELEASES" | head -n $NUM_KEEP)
+          DELETE_RELEASES=$(echo "$RELEASES" | tail -n +$((NUM_KEEP+1)))
+
+          for tag in $DELETE_RELEASES; do
+            BODY=$(gh release view "$tag" --json body --jq '.body' 2>/dev/null || true)
+
+            # skip KEEP
+            if echo "$BODY" | grep -q "KEEP"; then
+              echo "🛑 $tag ha flag KEEP"
+              continue
+            fi
+
+            echo "🗑️ Processing $tag"
+
+            # ============================
+            # parse RUN ID
+            # ============================
+            RUN_ID=$(echo "$BODY" | sed -n 's/.*Job ID:\*\* \([0-9]\+\).*/\1/p')
+
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "$GITHUB_RUN_ID" ]; then
+              echo "🔥 Cancello run $RUN_ID"
+              gh run delete "$RUN_ID" || true
+            fi
+
+            # ============================
+            # parse TIMESTAMP
+            # ============================
+            TS=$(echo "$BODY" | sed -n 's/.*Date:\*\* "\(.*\)".*/\1/p')
+            TARGET="$TYPE/$TS"
+            TARGETS+=("$TARGET")
+
+            # ============================
+            # delete release
+            # ============================
+            gh release delete "$tag" --yes --cleanup-tag || true
+          done
+
+
+           # 👉 serializzazione array
+          if [ ${#TARGETS[@]} -eq 0 ]; then
+            echo "targets=" >> $GITHUB_OUTPUT
+            echo "✨ Nessuna cartella da cancellare"
+          else
+            printf "%s\n" "${TARGETS[@]}" > targets.txt
+            echo "targets_file=targets.txt" >> $GITHUB_OUTPUT
+            echo "✅ Targets trovati:"
+            cat targets.txt
+          fi
+
+          # =========================================================
+          # 2. CLEANUP RUNS (mantieni solo 10 success)
+          # =========================================================
+          echo "🔍 Cleanup runs $TYPE.yaml"
+
+          RUN_DATA=$(gh run list --workflow "$TYPE.yaml" --limit 50 \
+            --json databaseId,conclusion \
+            | jq -r '.[] | "\(.databaseId) \(.conclusion)"')
+
+          SUCCESS_RUNS=$(echo "$RUN_DATA" | grep " success$" | awk '{print $1}')
+          KEEP_RUNS=$(echo "$SUCCESS_RUNS" | head -n 10)
+
+          ALL_IDS=$(echo "$RUN_DATA" | awk '{print $1}')
+
+          DELETE_RUNS=$(comm -23 \
+            <(echo "$ALL_IDS" | sort) \
+            <(echo "$KEEP_RUNS" | sort)
+          )
+
+          for run in $DELETE_RUNS; do
+            if [ "$run" != "$GITHUB_RUN_ID" ]; then
+              echo "🗑️ Cancello run $run"
+              gh run delete "$run" || true
+            fi
+          done
+
+          # =========================================================
+          # 3. SNAPSHOT HARD CLEAN
+          # =========================================================
+          if [ "$TYPE" = "snapshot" ]; then
+            echo "💣 Cleanup totale workflows tecnici"
+
+            for wf in "pages-build-deployment" "cleanup.yaml" "rebuild-index.yaml"; do
+              RUNS=$(gh run list --workflow "$wf" --limit 100 \
+                --json databaseId \
+                --jq '.[].databaseId' 2>/dev/null || true)
+
+              for r in $RUNS; do
+                if [ "$r" != "$GITHUB_RUN_ID" ]; then
+                  echo "🔥 Cancello $wf run $r"
+                  gh run delete "$r" || true
+                fi
+              done
+            done
+          fi
+
+
       - name: Checkout gh-pages
         if: steps.cleanup.outputs.targets_file != ''
         uses: actions/checkout@v4
