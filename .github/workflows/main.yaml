@@ -262,6 +262,22 @@ jobs:
           else
             echo "⚠️ Makefile di Postfix non trovato."
           fi
+
+      - name: Fix AS variable in Postfix Makefile
+        run: |
+          cd ${{ env.REPO_DIR }}
+          PKG_MAKEFILE="feeds/packages/mail/postfix/Makefile"
+          
+          if [ -f "$PKG_MAKEFILE" ]; then
+            echo "🔧 Correggo la variabile AS nel Makefile di Postfix..."
+            # Sostituisce la definizione errata di AS isolando solo l'eseguibile o disattivando i flag C
+            sed -i 's/AS=.*/AS="aarch64-openwrt-linux-musl-gcc"/g' "$PKG_MAKEFILE" || true
+            # In alternativa, se usa una variabile di OpenWrt, forziamo AS al solo compilatore pulito
+            sed -i '/MAKE_VARS\+=\s*AS=/d' "$PKG_MAKEFILE" || true
+            echo "✅ Correzione applicata."
+          else
+            echo "⚠️ Makefile di Postfix non trovato."
+          fi
           
       - name: Apply Config and Versioning
         run: |
