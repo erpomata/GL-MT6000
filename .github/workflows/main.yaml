@@ -242,6 +242,34 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      - name: Patch Postfix for GCC 14 / Musl conditionally
+        run: |
+          cd ${{ env.REPO_DIR }}
+          PKG_MAKEFILE="feeds/packages/mail/postfix/Makefile"
+          
+          if [ -f "$PKG_MAKEFILE" ]; then
+            # Verifica se la versione del pacchetto è la 3.8.2
+            # (Controlla nel Makefile la presenza di PKG_VERSION:=3.8.2)
+            if grep -q "PKG_VERSION:=3.8.2" "$PKG_MAKEFILE"; then
+              echo "📌 Rilevato Postfix 3.8.2."
+              
+              # Verifica se il compilatore in uso è GCC 14 (o superiore)
+              GCC_VERSION=$(aarch64-openwrt-linux-musl-gcc -dumpversion | cut -d. -f1)
+              echo "🔍 Versione GCC rilevata: $GCC_VERSION"
+              
+              if [ "$GCC_VERSION" -ge 14 ]; then
+                echo "⚡ GCC >= 14 rilevato insieme a Postfix 3.8.2: applicazione fix di compatibilità..."
+                sed -i '/CCARGS=/ s/$/ -DLINUX5 -DHAS_FCNTL_LOCK -DHAS_FLOCK_LOCK -DDEF_MAILBOX_LOCK=\\\"flock\\\" -DUSE_STATVFS -DSOCKADDR_SIZE=socklen_t/' "$PKG_MAKEFILE"
+              else
+                echo "ℹ️ GCC è inferiore a 14, patch non necessaria."
+              fi
+            else
+              echo "ℹ️ La versione di Postfix non è la 3.8.2, patch non applicata."
+            fi
+          else
+            echo "⚠️ Makefile di Postfix non trovato."
+          fi
+          
       - name: Apply Config and Versioning
         run: |
           TS="${{ steps.timestamp.outputs.ts }}"
