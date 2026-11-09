@@ -103,6 +103,26 @@ jobs:
           cleanup_runs snapshot.yaml
           cleanup_runs main.yaml
 
+      - name: Cleanup snapshot folders
+        run: |
+          set -e
+          
+          KEEP=10
+          
+          find snapshot \
+            -mindepth 1 \
+            -maxdepth 1 \
+            -type d \
+            -printf '%T@ %p\n' \
+            | sort -rn \
+            | tail -n +$((KEEP+1)) \
+            | cut -d' ' -f2- \
+            | while read dir
+              do
+                echo "Removing $dir"
+                rm -rf "$dir"
+              done
+
       - name: Sync gh-pages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
