@@ -259,6 +259,22 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      - name: Fix Postfix 3.8.2 platform detection on Linux 7 runners
+        run: |
+          cd ${{ env.REPO_DIR }}
+          if grep -q '^PKG_VERSION:=3\.8\.2$' feeds/packages/mail/postfix/Makefile; then
+            mkdir -p feeds/packages/mail/postfix/patches
+            cat > feeds/packages/mail/postfix/patches/999-linux7-support.patch <<'PATCH'
+          --- a/src/util/sys_defs.h
+          +++ b/src/util/sys_defs.h
+          @@ -765,3 +765,3 @@
+           #if defined(LINUX2) || defined(LINUX3) || defined(LINUX4) || defined(LINUX5) \
+          -	|| defined(LINUX6)
+          +	|| defined(LINUX6) || defined(LINUX7)
+           #define SUPPORTED
+          PATCH
+          fi
+
       - name: Apply Config and Versioning
         run: |
           TS="${{ steps.timestamp.outputs.ts }}"
@@ -484,7 +500,7 @@ jobs:
             ${{ env.REPO_DIR }}/release/packages.tar.gz
             ${{ env.REPO_DIR }}/.config
             ${{ env.REPO_DIR }}/${{ env.BUILD_TYPE }}.yaml
-          env:
+        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy to GitHub Pages
