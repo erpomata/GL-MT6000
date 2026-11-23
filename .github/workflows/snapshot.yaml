@@ -111,8 +111,8 @@ jobs:
               echo "  - File .config locale modificato (Nuovo Hash: $CONFIG_HASH)"
             fi
 
-            if [ "$SCRIPT_HASH" = "no" ]; then
-              echo "  - File script locale modificato (Nuovo Hash: $SCRIPT_MATCH)"
+            if [ "$SCRIPT_MATCH" = "no" ]; then
+              echo "  - File script locale modificato (Nuovo Hash: $SCRIPT_HASH)"
             fi
           fi
 
@@ -211,8 +211,9 @@ jobs:
           path: |
             ${{ env.REPO_DIR }}/dl
             ${{ env.REPO_DIR }}/.ccache_${{ env.BUILD_TYPE }}
-          key: ccache-${{ env.BUILD_TYPE }}-${{ hashFiles(env.CONFIG_FILE) }}
+          key: ccache-${{ env.BUILD_TYPE }}-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}-${{ hashFiles(format('.github/workflows/{0}.yaml', env.BUILD_TYPE)) }}
           restore-keys: |
+            ccache-${{ env.BUILD_TYPE }}-${{ needs.check.outputs.branch }}-${{ hashFiles(env.CONFIG_FILE) }}-
             ccache-${{ env.BUILD_TYPE }}-
 
       - name: Checkout Source ${{ needs.check.outputs.branch }}
