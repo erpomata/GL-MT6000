@@ -276,14 +276,20 @@ jobs:
            #define SUPPORTED
           PATCH
 
-            cat > feeds/packages/mail/postfix/patches/999-gcc15-c23-bool.patch <<'PATCH'
-          --- a/src/global/mail_params.h
-          +++ b/src/global/mail_params.h
-          @@ -14,3 +14,5 @@
-          +#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 202311L
-           typedef int bool;
-          +#endif
-          PATCH
+            python3 - <<'PY'
+          from pathlib import Path
+
+          mk = Path("feeds/packages/mail/postfix/Makefile")
+          text = mk.read_text()
+
+          # Rimuove eventuali tentativi precedenti su mail_params.h se non servono
+          if "-std=gnu17" not in text:
+              text = text.replace("TARGET_CFLAGS +=", "TARGET_CFLAGS += -std=gnu17 ")
+              text = text.replace("EXTRA_CFLAGS +=", "EXTRA_CFLAGS += -std=gnu17 ")
+              if "CCARGS=" in text:
+                  text = text.replace('CCARGS="', 'CCARGS="-std=gnu17 ')
+              mk.write_text(text)
+          PY
           fi
 
       - name: Apply Config and Versioning
