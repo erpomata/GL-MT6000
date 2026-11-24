@@ -276,13 +276,24 @@ jobs:
            #define SUPPORTED
           PATCH
 
-            # Forza lo standard GNU17 per evitare che GCC 15 usi C23 dove 'bool' e' parola chiave
-            sed -i '/TARGET_CFLAGS +=/a TARGET_CFLAGS += -std=gnu17' feeds/packages/mail/postfix/Makefile || true
-            if ! grep -q -- '-std=gnu17' feeds/packages/mail/postfix/Makefile; then
-              printf '\nTARGET_CFLAGS += -std=gnu17\n' >> feeds/packages/mail/postfix/Makefile
-            fi
-          fi
+            python3 - <<'PY'
+          from pathlib import Path
 
+          mk = Path("feeds/packages/mail/postfix/Makefile")
+          text = mk.read_text()
+
+          if "-std=gnu17" not in text:
+              if "TARGET_CFLAGS +=" in text:
+                  text = text.replace("TARGET_CFLAGS +=", "TARGET_CFLAGS += -std=gnu17 ", 1)
+              else:
+                  text += "\nTARGET_CFLAGS += -std=gnu17\n"
+
+              if "MAKE_FLAGS +=" in text and "CCARGS=" in text:
+                  text = text.replace('CCARGS="', 'CCARGS="-std=gnu17 ', 1)
+
+              mk.write_text(text)
+          PY
+          fi
       - name: Apply Config and Versioning
         run: |
           TS="${{ steps.timestamp.outputs.ts }}"
@@ -398,6 +409,7 @@ jobs:
       - name: Build Firmware
         run: |
           cd ${{ env.REPO_DIR }}
+          make package/feeds/packages/postfix/clean || true
           make -j$(nproc) || make -j1 V=s
 
      # 📦 prepara file release
