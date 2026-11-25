@@ -256,6 +256,19 @@ jobs:
           +	|| defined(LINUX6) || defined(LINUX7)
            #define SUPPORTED
           PATCH
+
+            python3 - <<'PY'
+          from pathlib import Path
+
+          mk = Path("feeds/packages/mail/postfix/Makefile")
+          text = mk.read_text()
+
+          # GCC 15 defaults to C23, where bool is a keyword.
+          if "-std=gnu17" not in text:
+              marker = "include $(INCLUDE_DIR)/package.mk"
+              text = text.replace(marker, marker + "\n\nTARGET_CFLAGS += -std=gnu17", 1)
+              mk.write_text(text)
+          PY
           fi
 
       - name: Fix AS variable in Postfix Makefile
