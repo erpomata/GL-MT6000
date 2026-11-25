@@ -282,7 +282,7 @@ jobs:
           mk = Path("feeds/packages/mail/postfix/Makefile")
           text = mk.read_text()
 
-# Forza gnu17 (GCC 15 usa C23 di default, dove 'bool' e' una keyword)
+          # Forza gnu17 (GCC 15 usa C23 di default, dove 'bool' e' una keyword)
           if "-std=gnu17" not in text:
               marker = "include $(INCLUDE_DIR)/package.mk"
               text = text.replace(marker, marker + "\n\nTARGET_CFLAGS += -std=gnu17", 1)
