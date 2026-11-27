@@ -256,19 +256,6 @@ jobs:
           +	|| defined(LINUX6) || defined(LINUX7)
            #define SUPPORTED
           PATCH
-
-            python3 - <<'PY'
-          from pathlib import Path
-
-          mk = Path("feeds/packages/mail/postfix/Makefile")
-          text = mk.read_text()
-
-          # GCC 15 defaults to C23, where bool is a keyword.
-          if "-std=gnu17" not in text:
-              marker = "include $(INCLUDE_DIR)/package.mk"
-              text = text.replace(marker, marker + "\n\nTARGET_CFLAGS += -std=gnu17", 1)
-              mk.write_text(text)
-          PY
           fi
 
       - name: Fix AS variable in Postfix Makefile
@@ -395,7 +382,32 @@ jobs:
       - name: Build Firmware
         run: |
           cd ${{ env.REPO_DIR }}
-          make -j$(nproc) || make -j1 V=s
+          if make -j$(nproc) || make -j1 V=s; then
+            echo "✅ Build completata senza il fallback GCC 15."
+          else
+            echo "⚠️ Primo tentativo fallito; applico il fallback GCC 15 per Postfix e riprovo."
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          mk = Path("feeds/packages/mail/postfix/Makefile")
+          if not mk.is_file():
+              raise SystemExit(f"Postfix Makefile non trovato: {mk}")
+
+          text = mk.read_text()
+          if not re.search(r"^PKG_VERSION:=3\.8\.2$", text, re.MULTILINE):
+              raise SystemExit("Il fallback GCC 15 è previsto solo per Postfix 3.8.2.")
+
+          if "-std=gnu17" not in text:
+              marker = "include $(INCLUDE_DIR)/package.mk"
+              if marker not in text:
+                  raise SystemExit(f"Impossibile trovare {marker!r} in {mk}.")
+              text = text.replace(marker, marker + "\n\nTARGET_CFLAGS += -std=gnu17", 1)
+              mk.write_text(text)
+          PY
+            make package/feeds/packages/postfix/clean
+            make -j$(nproc) || make -j1 V=s
+          fi
 
      # 📦 prepara file release
       - name: Prepare release
